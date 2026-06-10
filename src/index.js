@@ -10,6 +10,7 @@ import {
   tabelaExiste, caminhoTabela, caminhoProfile, pastaEmpresa,
 } from './lib/empresa.js';
 import { lerTabela } from './lib/excel.js';
+import { stripAccents } from './lib/mapeamento.js';
 import { criarModelo } from './flows/amazonModelo.js';
 
 const { Separator } = inquirer;
@@ -33,8 +34,7 @@ function header(titulo = '') {
 }
 
 function slugify(nome) {
-  return nome.trim().toLowerCase()
-    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+  return stripAccents(nome.trim().toLowerCase())
     .replace(/\s+/g, '-')
     .replace(/[^a-z0-9-]/g, '');
 }

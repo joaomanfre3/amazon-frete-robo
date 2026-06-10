@@ -1,8 +1,10 @@
 // Normaliza nomes de regiões para comparar nossa planilha com o formulário da Amazon.
 // Tanto a planilha quanto a Amazon usam o mesmo formato, então basta normalizar os dois lados.
 
-export const norm = (s) =>
-  (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+// Remove acentos (diacríticos combinantes). Primitiva reutilizada por norm/slugify/excel.
+export const stripAccents = (s) => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '');
+
+export const norm = (s) => stripAccents(s).toLowerCase().trim();
 
 // "Goiás(Goiás Capital)"          → { estado: 'goias', tipo: 'capital' }
 // "Goias(Goias Capital) Alterar"  → { estado: 'goias', tipo: 'capital' }  (formato Amazon)

@@ -4,10 +4,9 @@
 import XLSX from 'xlsx';
 import path from 'node:path';
 import fs from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { config } from '../src/config.js';
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const OUTPUT = path.join(ROOT, 'template', 'tabela_modelo.xlsx');
+const OUTPUT = config.templatePath;
 
 // As 53 regiões exatas da Amazon Seller Central Brasil
 const REGIOES = [

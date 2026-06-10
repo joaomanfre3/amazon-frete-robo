@@ -51,7 +51,7 @@ export function listarEmpresas() {
 }
 
 export function criarEmpresa(nome) {
-  const pasta = path.join(config.empresasDir, nome);
+  const pasta = pastaEmpresa(nome);
   if (fs.existsSync(pasta)) throw new Error(`Empresa "${nome}" já existe.`);
   fs.mkdirSync(pasta, { recursive: true });
   fs.writeFileSync(path.join(pasta, 'INSTRUCOES.txt'), gerarInstrucoes(nome), 'utf8');
@@ -59,32 +59,32 @@ export function criarEmpresa(nome) {
 }
 
 export function removerEmpresa(nome) {
-  const pasta = path.join(config.empresasDir, nome);
+  const pasta = pastaEmpresa(nome);
   if (!fs.existsSync(pasta)) throw new Error(`Empresa "${nome}" não encontrada.`);
   fs.rmSync(pasta, { recursive: true, force: true });
 }
 
 export function renomearEmpresa(nomeAntigo, nomeNovo) {
-  const pastaAntiga = path.join(config.empresasDir, nomeAntigo);
-  const pastaNova = path.join(config.empresasDir, nomeNovo);
+  const pastaAntiga = pastaEmpresa(nomeAntigo);
+  const pastaNova = pastaEmpresa(nomeNovo);
   if (!fs.existsSync(pastaAntiga)) throw new Error(`Empresa "${nomeAntigo}" não encontrada.`);
   if (fs.existsSync(pastaNova)) throw new Error(`Empresa "${nomeNovo}" já existe.`);
   fs.renameSync(pastaAntiga, pastaNova);
   fs.writeFileSync(path.join(pastaNova, 'INSTRUCOES.txt'), gerarInstrucoes(nomeNovo), 'utf8');
 }
 
-export function tabelaExiste(nome) {
-  return fs.existsSync(path.join(config.empresasDir, nome, 'tabela.xlsx'));
+export function pastaEmpresa(nome) {
+  return path.join(config.empresasDir, nome);
 }
 
 export function caminhoTabela(nome) {
-  return path.join(config.empresasDir, nome, 'tabela.xlsx');
+  return path.join(pastaEmpresa(nome), 'tabela.xlsx');
 }
 
 export function caminhoProfile(nome) {
-  return path.join(config.empresasDir, nome, '.chrome-profile');
+  return path.join(pastaEmpresa(nome), '.chrome-profile');
 }
 
-export function pastaEmpresa(nome) {
-  return path.join(config.empresasDir, nome);
+export function tabelaExiste(nome) {
+  return fs.existsSync(caminhoTabela(nome));
 }

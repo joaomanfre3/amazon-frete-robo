@@ -1,10 +1,11 @@
 import { pausa } from '../browser/connect.js';
+import { config } from '../config.js';
 import { parsarRegiao, prazoParaFaixa } from '../lib/mapeamento.js';
 
-const URL_CRIAR =
-  'https://sellercentral.amazon.com.br/sbr/template?request=%7B%22action%22%3A%22create%22%7D';
-
-// Esta função roda DENTRO do navegador (page.evaluate).
+// Esta função roda DENTRO do navegador (page.evaluate), onde não há acesso aos
+// módulos Node. Por isso norm/parsarAmazon são cópias do que existe em
+// lib/mapeamento.js (norm/parsarRegiao) — MANTER OS DOIS EM SINCRONIA: se a
+// regra de normalização mudar lá, mudar aqui também, senão o match silenciosamente quebra.
 // Preenche o nome do modelo e todos os valores de frete por região.
 function preencherNaPagina({ nome, DATA }) {
   const norm = (s) =>
@@ -96,7 +97,7 @@ export async function criarModelo(ctx, { nome, regioes, salvar = false }) {
   }
 
   const page = ctx.pages()[0] ?? (await ctx.newPage());
-  await page.goto(URL_CRIAR);
+  await page.goto(config.amazon.criarModelo);
   await page.waitForSelector('input[name="templateName"]', { timeout: 30_000 });
   await pausa();
 

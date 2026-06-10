@@ -1,4 +1,5 @@
 import XLSX from 'xlsx';
+import { norm } from './mapeamento.js';
 
 // Abas que o robô ignora (são resumos/instruções, não produtos)
 const IGNORAR = ['resumo', 'tabela geral', 'instrucoes', 'leia-me', 'readme', 'notas'];
@@ -30,7 +31,7 @@ export function lerTabela(caminhoXlsx) {
     // Encontra a linha de cabeçalho (coluna A contém "Região" ou "Regiao")
     let cabecIdx = -1;
     for (let i = 0; i < linhas.length; i++) {
-      if (String(linhas[i][0] || '').toLowerCase().replace(/[̀-ͯ]/g, '').includes('regi')) {
+      if (norm(linhas[i][0]).includes('regi')) {
         cabecIdx = i;
         break;
       }
