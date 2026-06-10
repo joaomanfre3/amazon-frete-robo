@@ -18,6 +18,10 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* Garante que o atributo `hidden` sempre esconda, mesmo em elementos com
+   display: flex/grid (senão modal/toast aparecem presos na tela). */
+[hidden] { display: none !important; }
+
 html, body {
   height: 100%;
   background: var(--bg);
