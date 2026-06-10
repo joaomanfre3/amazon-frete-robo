@@ -7,9 +7,15 @@ SETUP INICIAL (fazer uma vez):
     → Instala dependências, navegador Chrome e gera o template Excel
 
 --------------------------------------------------
-MODO INTERATIVO (recomendado para uso diário):
+JANELA (app desktop — recomendado para uso diário):
+  npm run app
+    → Abre a janela do robô (botões, lista de empresas, execução ao vivo)
+    → Não precisa mexer no terminal depois disso
+
+--------------------------------------------------
+MODO TERMINAL (reserva / diagnóstico):
   node src/index.js
-    → Abre o menu principal com setas e Enter
+    → Abre o menu de texto com setas e Enter
 
 --------------------------------------------------
 COMANDOS DIRETOS:
@@ -40,6 +46,10 @@ ARQUIVOS IMPORTANTES:
     → Modelo da planilha no formato correto
     → Envie para uma IA preencher com os dados da empresa
     → Cada aba = um produto (o nome da aba vira o modelo na Amazon)
+
+  PLANILHAS: o robô aceita QUALQUER arquivo .xlsx na pasta da empresa
+    (não precisa se chamar "tabela.xlsx"). Se houver mais de uma planilha,
+    o robô pergunta qual usar. Para atualizar: remova a antiga, coloque a nova.
 
   empresas/<nome>/INSTRUCOES.txt
     → Instruções específicas para cada empresa cadastrada

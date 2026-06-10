@@ -1,6 +1,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { config } from '../config.js';
+import { stripAccents } from './mapeamento.js';
+
+/** Normaliza o nome digitado para um slug seguro de pasta. */
+export function slugify(nome) {
+  return stripAccents(String(nome).trim().toLowerCase())
+    .replace(/\s+/g, '-')
+    .replace(/[^a-z0-9-]/g, '');
+}
 
 function gerarInstrucoes(nome) {
   return `=== INSTRUÇÕES DE USO — ${nome.toUpperCase()} ===
@@ -14,7 +22,8 @@ PRIMEIRO USO — FAZER LOGIN NA AMAZON:
   6. Você não precisará logar novamente (a menos que a sessão expire)
 
 EXECUTAR O ROBÔ (criar modelos de frete na Amazon):
-  1. Coloque o arquivo "tabela.xlsx" NESTA pasta: empresas/${nome}/
+  1. Coloque uma planilha .xlsx (qualquer nome) NESTA pasta: empresas/${nome}/
+     Se houver mais de uma .xlsx, o robô pergunta qual usar.
   2. Para simular (sem salvar nada na Amazon):
        node src/index.js run ${nome}
   3. Para criar e SALVAR os modelos na Amazon:
@@ -23,8 +32,8 @@ EXECUTAR O ROBÔ (criar modelos de frete na Amazon):
   Ou use o menu interativo: node src/index.js
 
 ATUALIZAR A TABELA:
-  1. Remova o arquivo "tabela.xlsx" desta pasta
-  2. Adicione o novo arquivo "tabela.xlsx" (com o mesmo nome)
+  1. Remova a planilha antiga desta pasta
+  2. Adicione a nova planilha .xlsx
   3. Execute o robô normalmente
 
 FORMATO DA PLANILHA:
@@ -34,7 +43,7 @@ FORMATO DA PLANILHA:
   → Você pode enviar o template para uma IA preencher os valores
 
 ARQUIVOS NESTA PASTA:
-  tabela.xlsx          → planilha com os fretes (você coloca aqui)
+  <qualquer>.xlsx      → planilha(s) com os fretes (você coloca aqui)
   .chrome-profile/     → perfil do Chrome com login salvo (não apague!)
   INSTRUCOES.txt       → este arquivo
 `;
@@ -77,14 +86,47 @@ export function pastaEmpresa(nome) {
   return path.join(config.empresasDir, nome);
 }
 
-export function caminhoTabela(nome) {
-  return path.join(pastaEmpresa(nome), 'tabela.xlsx');
-}
-
 export function caminhoProfile(nome) {
   return path.join(pastaEmpresa(nome), '.chrome-profile');
 }
 
+/**
+ * Lista os arquivos .xlsx na pasta da empresa (ordenados).
+ * Ignora arquivos temporários do Excel (começam com "~$").
+ * @returns {string[]} nomes dos arquivos (sem caminho)
+ */
+export function listarTabelas(nome) {
+  const pasta = pastaEmpresa(nome);
+  if (!fs.existsSync(pasta)) return [];
+  return fs.readdirSync(pasta)
+    .filter((f) => f.toLowerCase().endsWith('.xlsx') && !f.startsWith('~$'))
+    .sort();
+}
+
+/** true se houver ao menos um .xlsx na pasta da empresa. */
 export function tabelaExiste(nome) {
-  return fs.existsSync(caminhoTabela(nome));
+  return listarTabelas(nome).length > 0;
+}
+
+/**
+ * Caminho completo de uma planilha da empresa.
+ * @param {string} nome     empresa
+ * @param {string} [arquivo] nome do .xlsx. Se omitido, usa o único existente.
+ * @throws se não houver tabela, ou se houver várias e nenhuma for especificada.
+ */
+export function caminhoTabela(nome, arquivo) {
+  const tabelas = listarTabelas(nome);
+  if (!tabelas.length) {
+    throw new Error(`Nenhum arquivo .xlsx encontrado na pasta da empresa "${nome}".`);
+  }
+  if (arquivo) {
+    if (!tabelas.includes(arquivo)) {
+      throw new Error(`Arquivo "${arquivo}" não encontrado na pasta da empresa "${nome}".`);
+    }
+    return path.join(pastaEmpresa(nome), arquivo);
+  }
+  if (tabelas.length > 1) {
+    throw new Error(`Há ${tabelas.length} planilhas na pasta de "${nome}". Especifique qual usar.`);
+  }
+  return path.join(pastaEmpresa(nome), tabelas[0]);
 }

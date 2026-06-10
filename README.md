@@ -2,6 +2,10 @@
 
 Automação Playwright para criar **modelos de envio** na Amazon Seller Central — suporte a múltiplas empresas, cada uma com sua própria conta e planilha de fretes.
 
+Funciona de dois jeitos, com o **mesmo motor** por baixo:
+- 🖥️ **Janela (app desktop)** — `npm run app` — interface com botões, ideal para o dia a dia
+- ⌨️ **Terminal (CLI)** — `node src/index.js` — menu de texto, reserva/diagnóstico
+
 ---
 
 ## Como funciona
@@ -33,7 +37,23 @@ npm run setup
 
 ## Como usar
 
-### Modo interativo (recomendado)
+### Janela (app desktop — recomendado)
+
+```bash
+npm run app
+```
+
+Abre a janela do robô:
+- **Lista de empresas** em cartões (com status de planilha e login)
+- **Nova empresa**, renomear, remover — tudo por botão
+- **Adicionar planilha** abre o seletor de arquivos e copia o `.xlsx` para a pasta
+- **Executar** mostra cada produto sendo preenchido **ao vivo**, com barra de progresso
+
+> Arquitetura: a janela (Electron) conversa com um **motor isolado** (processo Node
+> separado) que roda o Playwright. Se o navegador travar, só o motor cai — a janela
+> continua. O motor é exatamente o mesmo código do CLI (`src/core/executor.js`).
+
+### Modo terminal (reserva)
 
 ```bash
 node src/index.js
@@ -79,7 +99,9 @@ Você pode **enviar esse template para uma IA** (ex: Claude, ChatGPT) com a inst
 
 > *"Preencha esta planilha com os valores de frete da empresa X. Uma aba por produto. Mantenha o formato exato — Região, Frete (R$) e Prazo (dias)."*
 
-Coloque o arquivo preenchido em `empresas/<nome>/tabela.xlsx`.
+Coloque o arquivo preenchido (qualquer nome `.xlsx`) na pasta `empresas/<nome>/`.
+Pela janela, use **Adicionar planilha** — ela copia o arquivo pra lá automaticamente.
+Se houver mais de uma planilha na pasta, o robô pergunta qual usar.
 
 ### 3. Fazer login na Amazon (primeira vez)
 
@@ -135,8 +157,8 @@ São Paulo(São Paulo Interior)
 
 ### Para atualizar a tabela
 
-1. Remova o arquivo `tabela.xlsx` da pasta da empresa
-2. Adicione o novo arquivo `tabela.xlsx` (com o mesmo nome)
+1. Remova a planilha antiga da pasta da empresa (ou pelo botão ✕ na janela)
+2. Adicione a nova planilha `.xlsx`
 3. Execute o robô normalmente
 
 ---
@@ -145,24 +167,31 @@ São Paulo(São Paulo Interior)
 
 ```
 amazon-frete-robo/
-├── src/
-│   ├── index.js              # entry point — menu interativo + comandos CLI
+├── src/                      # MOTOR (compartilhado por janela e CLI)
+│   ├── index.js              # entry point do CLI — menu + comandos
 │   ├── config.js             # configurações
+│   ├── core/
+│   │   └── executor.js       # motor puro (emite eventos do "contrato de job")
 │   ├── browser/
 │   │   └── connect.js        # abre Chrome com perfil persistente
 │   ├── lib/
-│   │   ├── empresa.js        # CRUD de empresas
+│   │   ├── empresa.js        # CRUD de empresas + detecção de planilhas
 │   │   ├── excel.js          # leitura da planilha xlsx
 │   │   └── mapeamento.js     # normalização de regiões + prazo Amazon
 │   └── flows/
 │       └── amazonModelo.js   # preenche o formulário na Amazon
+├── desktop/                  # JANELA (Electron)
+│   ├── main.js               # processo principal (cria janela, coordena)
+│   ├── preload.cjs           # ponte segura janela ↔ main
+│   ├── worker.js             # motor isolado (processo separado, roda o core)
+│   └── ui/                   # index.html · styles.css · app.js
 ├── scripts/
 │   └── gerar-template.js     # gera o template Excel
 ├── template/
 │   └── tabela_modelo.xlsx    # planilha modelo (inclusa no repo)
 ├── empresas/                 # dados por empresa (NÃO versionados)
 │   └── <nome-empresa>/
-│       ├── tabela.xlsx       ← você coloca aqui
+│       ├── *.xlsx            ← planilha(s) de frete (você coloca aqui)
 │       ├── .chrome-profile/  ← login salvo (gerado automaticamente)
 │       └── INSTRUCOES.txt    ← instruções de uso desta empresa
 ├── COMANDOS.txt              # lista de todos os comandos

@@ -1,9 +1,7 @@
 node_modules/
 .env
 
-# Dados das empresas (planilhas, perfis de Chrome) ficam fora do repo
-empresas/*/tabela.xlsx
-empresas/*/.chrome-profile/
-
-# Manter a estrutura de pastas (gitkeep permanece)
+# Dados das empresas (planilhas, perfis de Chrome, instruções) ficam fora do repo
+empresas/*
+# Manter só a estrutura de pastas (gitkeep permanece)
 !empresas/.gitkeep

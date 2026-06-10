@@ -3,15 +3,12 @@ import chalk from 'chalk';
 import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
-import { abrirNavegador } from './browser/connect.js';
 import { config } from './config.js';
 import {
   listarEmpresas, criarEmpresa, removerEmpresa, renomearEmpresa,
-  tabelaExiste, caminhoTabela, caminhoProfile, pastaEmpresa,
+  tabelaExiste, listarTabelas, pastaEmpresa, slugify,
 } from './lib/empresa.js';
-import { lerTabela } from './lib/excel.js';
-import { stripAccents } from './lib/mapeamento.js';
-import { criarModelo } from './flows/amazonModelo.js';
+import { carregarPlano, executarModelos, abrirParaLogin } from './core/executor.js';
 
 const { Separator } = inquirer;
 
@@ -33,34 +30,39 @@ function header(titulo = '') {
   console.log();
 }
 
-function slugify(nome) {
-  return stripAccents(nome.trim().toLowerCase())
-    .replace(/\s+/g, '-')
-    .replace(/[^a-z0-9-]/g, '');
-}
 
 // ─── Execução do robô ──────────────────────────────────────────────────────
 
 async function executar(nomeEmpresa, salvar) {
-  if (!tabelaExiste(nomeEmpresa)) {
-    console.log(chalk.red(`\n  ✘ tabela.xlsx não encontrada em empresas/${nomeEmpresa}/`));
-    console.log(chalk.yellow(`  Coloque o arquivo na pasta e tente novamente.\n`));
+  // Descobre qual planilha usar. Se houver mais de uma, pergunta.
+  const tabelas = listarTabelas(nomeEmpresa);
+  if (!tabelas.length) {
+    console.log(chalk.red(`\n  ✘ Nenhuma planilha .xlsx encontrada em empresas/${nomeEmpresa}/`));
+    console.log(chalk.yellow(`  Coloque um arquivo .xlsx na pasta e tente novamente.\n`));
     return;
   }
 
+  let arquivoTabela = tabelas[0];
+  if (tabelas.length > 1) {
+    const resp = await inquirer.prompt([{
+      type: 'list',
+      name: 'arquivo',
+      message: `Há ${tabelas.length} planilhas na pasta. Qual usar?`,
+      choices: tabelas,
+    }]);
+    arquivoTabela = resp.arquivo;
+  }
+
+  // Pré-carrega o plano para mostrar e confirmar antes de abrir o navegador.
   let produtos;
   try {
-    produtos = lerTabela(caminhoTabela(nomeEmpresa));
+    produtos = carregarPlano(nomeEmpresa, arquivoTabela);
   } catch (e) {
-    console.log(chalk.red(`\n  ✘ Erro ao ler a planilha: ${e.message}\n`));
+    console.log(chalk.red(`\n  ✘ ${e.message}\n`));
     return;
   }
 
-  if (!produtos.length) {
-    console.log(chalk.yellow('\n  ⚠ Nenhuma aba de produto encontrada na planilha.'));
-    console.log(chalk.gray('  Verifique se o arquivo tem abas além de "Resumo" e "Tabela Geral".\n'));
-    return;
-  }
+  console.log(chalk.gray(`\n  📄 Planilha: ${arquivoTabela}`));
 
   console.log(chalk.cyan(`\n  📋 ${produtos.length} modelo(s) encontrado(s):`));
   for (const p of produtos) {
@@ -82,32 +84,35 @@ async function executar(nomeEmpresa, salvar) {
   }]);
   if (!confirma) return;
 
-  console.log(chalk.cyan('\n  ⏳ Abrindo navegador...\n'));
-  const ctx = await abrirNavegador(caminhoProfile(nomeEmpresa));
-
-  try {
-    for (const produto of produtos) {
-      process.stdout.write(`  ⚙  ${chalk.white(produto.pagina)}... `);
-      try {
-        const res = await criarModelo(ctx, {
-          nome: produto.pagina,
-          regioes: produto.regioes,
-          salvar,
-        });
-        if (res.ok === res.total) {
-          console.log(chalk.green(`✓ ${res.ok}/${res.total} regiões${salvar ? ' — SALVO' : ' — simulado'}`));
-        } else {
-          console.log(chalk.yellow(`⚠ ${res.ok}/${res.total} regiões (sem match: ${res.faltou?.join(', ')})`));
-        }
-      } catch (e) {
-        console.log(chalk.red(`✘ Erro: ${e.message}`));
+  // Motor compartilhado: traduz os eventos do job em saída de terminal.
+  await executarModelos({
+    nomeEmpresa,
+    salvar,
+    arquivoTabela,
+    onEvent: (ev) => {
+      switch (ev.type) {
+        case 'browser-abrindo':
+          console.log(chalk.cyan('\n  ⏳ Abrindo navegador...\n'));
+          break;
+        case 'produto-inicio':
+          process.stdout.write(`  ⚙  ${chalk.white(ev.nome)}... `);
+          break;
+        case 'produto-fim':
+          if (ev.ok === ev.totalRegioes) {
+            console.log(chalk.green(`✓ ${ev.ok}/${ev.totalRegioes} regiões${ev.salvo ? ' — SALVO' : ' — simulado'}`));
+          } else {
+            console.log(chalk.yellow(`⚠ ${ev.ok}/${ev.totalRegioes} regiões (sem match: ${ev.faltou?.join(', ')})`));
+          }
+          break;
+        case 'produto-erro':
+          console.log(chalk.red(`✘ Erro: ${ev.msg}`));
+          break;
+        case 'done':
+          console.log(chalk.bold.green('\n  ✅ Concluído!\n'));
+          break;
       }
-    }
-  } finally {
-    if (salvar) await ctx.close().catch(() => {});
-  }
-
-  console.log(chalk.bold.green('\n  ✅ Concluído!\n'));
+    },
+  });
 }
 
 // ─── Login ─────────────────────────────────────────────────────────────────
@@ -116,12 +121,7 @@ async function fazerLogin(nomeEmpresa) {
   console.log(chalk.cyan(`\n  🌐 Abrindo Chrome para login da empresa "${nomeEmpresa}"...`));
   console.log(chalk.yellow('  Faça login na Amazon Seller Central e feche o navegador quando terminar.\n'));
 
-  const ctx = await abrirNavegador(caminhoProfile(nomeEmpresa));
-  const page = ctx.pages()[0] ?? (await ctx.newPage());
-  await page.goto(config.amazon.modelos);
-
-  await page.waitForEvent('close', { timeout: 0 }).catch(() => {});
-  await ctx.close().catch(() => {});
+  await abrirParaLogin({ nomeEmpresa, urlAmazon: config.amazon.modelos });
 
   console.log(chalk.green('\n  ✅ Login salvo! A sessão está guardada na pasta da empresa.\n'));
 }
@@ -129,10 +129,10 @@ async function fazerLogin(nomeEmpresa) {
 // ─── Menu da empresa ────────────────────────────────────────────────────────
 
 async function menuEmpresa(nomeEmpresa) {
-  const temTabela = tabelaExiste(nomeEmpresa);
-  const statusTabela = temTabela
-    ? chalk.green('tabela.xlsx ✓')
-    : chalk.red('tabela.xlsx não encontrada');
+  const nTabelas = listarTabelas(nomeEmpresa).length;
+  const statusTabela = nTabelas === 0
+    ? chalk.red('nenhuma planilha .xlsx')
+    : chalk.green(`${nTabelas} planilha${nTabelas > 1 ? 's' : ''} .xlsx ✓`);
 
   header(`Empresa: ${chalk.bold.white(nomeEmpresa)}   ${statusTabela}`);
 
@@ -279,16 +279,16 @@ async function menuNovaEmpresa() {
 
   console.log(chalk.green(`\n  ✓ Empresa "${slug}" criada!\n`));
   console.log(chalk.bold('  Próximo passo — adicionar a planilha de fretes:'));
-  console.log(chalk.white(`\n  1. Coloque o arquivo "tabela.xlsx" nesta pasta:`));
+  console.log(chalk.white(`\n  1. Coloque um arquivo .xlsx (qualquer nome) nesta pasta:`));
   console.log(chalk.cyan(`     ${pasta}`));
   console.log(chalk.gray('\n  2. Use o template em template/tabela_modelo.xlsx como base.'));
   console.log(chalk.gray('     Você pode enviar o template para uma IA preencher os valores.'));
   console.log(chalk.gray('\n  3. Cada aba da planilha = um produto (o nome da aba vira o modelo na Amazon).'));
 
-  await aguardarEnter('\n\nQuando o arquivo tabela.xlsx estiver na pasta, pressione ENTER...');
+  await aguardarEnter('\n\nQuando a planilha .xlsx estiver na pasta, pressione ENTER...');
 
   if (!tabelaExiste(slug)) {
-    console.log(chalk.red('\n  ✘ Arquivo tabela.xlsx não encontrado na pasta.\n'));
+    console.log(chalk.red('\n  ✘ Nenhuma planilha .xlsx encontrada na pasta.\n'));
 
     const { acao } = await inquirer.prompt([{
       type: 'list',

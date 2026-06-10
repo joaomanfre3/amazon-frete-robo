@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Robô Frete Amazon</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-logo">🚚</span>
+      <div>
+        <div class="brand-title">Robô Frete Amazon</div>
+        <div class="brand-sub">Criação de modelos de frete · Seller Central</div>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <span id="badge-status" class="pill pill-idle">Pronto</span>
+    </div>
+  </header>
+
+  <main id="app">
+    <!-- ░░░ TELA 1: LISTA DE EMPRESAS ░░░ -->
+    <section class="view" data-view="empresas">
+      <div class="view-head">
+        <h1>Empresas</h1>
+        <button class="btn btn-primary" id="btn-nova-empresa">＋ Nova empresa</button>
+      </div>
+      <div class="grid-empresas" id="grid-empresas"></div>
+      <p class="vazio" id="empresas-vazio" hidden>
+        Nenhuma empresa ainda. Clique em <b>Nova empresa</b> para começar.
+      </p>
+    </section>
+
+    <!-- ░░░ TELA 2: DETALHE DA EMPRESA ░░░ -->
+    <section class="view" data-view="empresa" hidden>
+      <button class="btn-voltar" id="btn-voltar-lista">← Voltar</button>
+      <div class="view-head">
+        <h1 id="empresa-nome">—</h1>
+        <div class="head-actions">
+          <button class="btn btn-ghost" id="btn-instrucoes">Instruções</button>
+          <button class="btn btn-ghost" id="btn-renomear">Renomear</button>
+          <button class="btn btn-ghost btn-danger-ghost" id="btn-remover-empresa">Remover</button>
+        </div>
+      </div>
+
+      <div class="cards-2">
+        <!-- Planilhas -->
+        <div class="card">
+          <div class="card-head">
+            <h2>📄 Planilhas</h2>
+            <button class="btn btn-sm" id="btn-add-planilha">＋ Adicionar</button>
+          </div>
+          <ul class="lista-tabelas" id="lista-tabelas"></ul>
+          <p class="hint" id="tabelas-vazio" hidden>
+            Nenhuma planilha .xlsx. Adicione uma para executar o robô.
+          </p>
+          <button class="link" id="btn-abrir-pasta">Abrir pasta da empresa ↗</button>
+        </div>
+
+        <!-- Conta Amazon -->
+        <div class="card">
+          <div class="card-head"><h2>🔑 Conta Amazon</h2></div>
+          <p class="status-linha">
+            Login: <span id="status-login" class="tag">—</span>
+          </p>
+          <p class="hint">
+            O robô usa o login salvo deste perfil. Faça login uma vez; depois ele entra sozinho.
+          </p>
+          <button class="btn btn-block" id="btn-login">Fazer login na Amazon</button>
+        </div>
+      </div>
+
+      <!-- Executar -->
+      <div class="card card-exec">
+        <div class="card-head"><h2>▶ Executar</h2></div>
+        <div class="exec-controls">
+          <label class="campo">
+            <span>Planilha</span>
+            <select id="select-planilha"></select>
+          </label>
+
+          <div class="modo-toggle" id="modo-toggle">
+            <button class="modo-opt is-on" data-modo="simular">
+              <b>Simular</b><small>não salva nada</small>
+            </button>
+            <button class="modo-opt" data-modo="salvar">
+              <b>Salvar na Amazon</b><small>cria de verdade</small>
+            </button>
+          </div>
+
+          <button class="btn btn-primary btn-grande" id="btn-executar" disabled>Executar</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ░░░ TELA 3: EXECUÇÃO AO VIVO ░░░ -->
+    <section class="view" data-view="execucao" hidden>
+      <div class="view-head">
+        <h1 id="exec-titulo">Executando…</h1>
+        <span id="exec-modo-badge" class="pill"></span>
+      </div>
+
+      <div class="progress-wrap">
+        <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+        <span class="progress-label" id="progress-label">—</span>
+      </div>
+
+      <ul class="lista-produtos" id="lista-produtos"></ul>
+
+      <div class="log" id="log"></div>
+
+      <div class="exec-rodape">
+        <button class="btn btn-danger" id="btn-cancelar">Cancelar</button>
+        <button class="btn btn-primary" id="btn-concluir" hidden>Voltar</button>
+      </div>
+    </section>
+  </main>
+
+  <!-- ░░░ MODAL genérico (nova empresa / renomear / confirmações) ░░░ -->
+  <div class="modal-overlay" id="modal" hidden>
+    <div class="modal">
+      <h3 id="modal-titulo">Título</h3>
+      <p id="modal-texto" class="modal-texto"></p>
+      <input type="text" id="modal-input" class="modal-input" hidden />
+      <div class="modal-acoes">
+        <button class="btn btn-ghost" id="modal-cancelar">Cancelar</button>
+        <button class="btn btn-primary" id="modal-confirmar">Confirmar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" hidden></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
