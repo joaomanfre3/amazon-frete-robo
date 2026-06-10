@@ -1,0 +1,60 @@
+===================================================
+  ROBÔ FRETE AMAZON — LISTA DE COMANDOS
+===================================================
+
+SETUP INICIAL (fazer uma vez):
+  npm run setup
+    → Instala dependências, navegador Chrome e gera o template Excel
+
+--------------------------------------------------
+MODO INTERATIVO (recomendado para uso diário):
+  node src/index.js
+    → Abre o menu principal com setas e Enter
+
+--------------------------------------------------
+COMANDOS DIRETOS:
+
+  node src/index.js list
+    → Lista todas as empresas cadastradas e se a tabela está ok
+
+  node src/index.js login <nome-empresa>
+    → Abre o Chrome para fazer login na Amazon Seller Central
+    → Faça login manualmente e feche o navegador quando terminar
+    → A sessão fica salva — você não precisa logar novamente
+
+  node src/index.js run <nome-empresa>
+    → Simula a criação de modelos (não salva nada na Amazon)
+    → Usa o arquivo tabela.xlsx da pasta empresas/<nome-empresa>/
+
+  node src/index.js run <nome-empresa> --salvar
+    → Cria e SALVA os modelos de frete na Amazon Seller Central
+    → Use com atenção — as alterações ficam registradas na Amazon
+
+  node src/index.js remove <nome-empresa>
+    → Remove a empresa e todos os seus dados locais
+
+--------------------------------------------------
+ARQUIVOS IMPORTANTES:
+
+  template/tabela_modelo.xlsx
+    → Modelo da planilha no formato correto
+    → Envie para uma IA preencher com os dados da empresa
+    → Cada aba = um produto (o nome da aba vira o modelo na Amazon)
+
+  empresas/<nome>/INSTRUCOES.txt
+    → Instruções específicas para cada empresa cadastrada
+
+--------------------------------------------------
+ESTRUTURA DE PASTAS:
+
+  amazon-frete-robo/
+  ├── empresas/
+  │   └── <nome-empresa>/
+  │       ├── tabela.xlsx          ← planilha dos fretes (você coloca aqui)
+  │       ├── .chrome-profile/     ← login salvo do Chrome (gerado automaticamente)
+  │       └── INSTRUCOES.txt       ← instruções de uso para esta empresa
+  ├── template/
+  │   └── tabela_modelo.xlsx       ← modelo para preencher/enviar para IA
+  └── COMANDOS.txt                 ← este arquivo
+
+===================================================
