@@ -56,14 +56,15 @@ create table modelo_frete (
   empresa_id         uuid not null references empresa(id) on delete cascade,
   amazon_template_id text,                                  -- ID estável da Amazon; NUNCA por nome
   status             status_modelo not null default 'pendente',
-  hash_config        text not null,                         -- anti-dup + detectar mudança
+  hash_config        text not null,                         -- detecta mudança (criar/editar/pular)
   erro_msg           text,
   claimed_by         uuid references operador(id),          -- claim atômico (concorrência)
   claimed_at         timestamptz,
   version            integer not null default 0,            -- lock otimista
   atualizado_em      timestamptz not null default now(),
-  unique (produto_id),
-  unique (empresa_id, hash_config)                          -- anti-duplicação pelo banco
+  -- Anti-duplicação é POR PRODUTO (1 modelo por produto). NÃO por hash_config:
+  -- produtos na mesma faixa de peso têm fretes idênticos e colidiriam.
+  unique (produto_id)
 );
 
 -- Auditoria: qual planilha originou os dados (arquivo fica local no PC)
