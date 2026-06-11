@@ -152,7 +152,17 @@ body { display: flex; flex-direction: column; overflow: hidden; }
 .lista-tabelas .tb-del:hover { color: var(--danger); }
 
 .hint { color: var(--muted); font-size: 12.5px; line-height: 1.5; margin-top: 6px; }
-.status-linha { font-size: 14px; margin-bottom: 6px; }
+.status-linha { font-size: 14px; margin-bottom: 12px; }
+
+/* Cofre de credenciais */
+.cofre { display: flex; flex-direction: column; gap: 10px; padding: 14px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); margin-bottom: 4px; }
+.campo-mini { display: flex; flex-direction: column; gap: 5px; }
+.campo-mini span { font-size: 12px; color: var(--muted); font-weight: 600; }
+.campo-mini small { font-weight: 400; color: var(--success); }
+.campo-mini input { font: inherit; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 7px; padding: 9px 11px; }
+.campo-mini input:focus { outline: none; border-color: var(--accent); }
+.cofre-acoes { display: flex; gap: 8px; align-items: center; }
+.tag-info { background: rgba(88,166,255,.14); color: var(--info); }
 
 /* ─── Executar ───────────────────────────────────────── */
 .card-exec { }

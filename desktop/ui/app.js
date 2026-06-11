@@ -63,9 +63,10 @@ async function renderEmpresas() {
     const tabTag = nT === 0
       ? `<span class="tag tag-off">sem planilha</span>`
       : `<span class="tag tag-ok">${nT} planilha${nT > 1 ? 's' : ''}</span>`;
-    const loginTag = emp.temLogin
-      ? `<span class="tag tag-ok">logado</span>`
-      : `<span class="tag tag-warn">sem login</span>`;
+    let loginTag;
+    if (!emp.login.logado) loginTag = `<span class="tag tag-warn">sem login</span>`;
+    else if (emp.login.expirado) loginTag = `<span class="tag tag-warn">login expirado</span>`;
+    else loginTag = `<span class="tag tag-ok">logado</span>`;
 
     const card = document.createElement('div');
     card.className = 'empresa-card';
@@ -111,16 +112,34 @@ async function abrirEmpresa(nome) {
   estado._instrucoes = instr;
 
   renderTabelas();
-  renderStatusLogin(nome);
+  await renderStatusLogin(nome);
+  await carregarCofre(nome);
   mostrarView('empresa');
+}
+
+function descreveIdade(h) {
+  if (h == null) return '';
+  if (h < 1) return 'há poucos minutos';
+  if (h < 24) return `há ${Math.round(h)}h`;
+  return `há ${Math.round(h / 24)} dia(s)`;
 }
 
 async function renderStatusLogin(nome) {
   const empresas = await window.api.listarEmpresas();
   const emp = empresas.find((e) => e.nome === nome);
   const tag = $('#status-login');
-  if (emp?.temLogin) { tag.textContent = 'logado ✓'; tag.className = 'tag tag-ok'; }
-  else { tag.textContent = 'ainda não'; tag.className = 'tag tag-warn'; }
+  const lg = emp?.login;
+  if (!lg?.logado) { tag.textContent = 'ainda não'; tag.className = 'tag tag-warn'; }
+  else if (lg.expirado) { tag.textContent = `pode ter expirado (logado ${descreveIdade(lg.idadeHoras)})`; tag.className = 'tag tag-warn'; }
+  else { tag.textContent = `logado ✓ (${descreveIdade(lg.idadeHoras)})`; tag.className = 'tag tag-ok'; }
+}
+
+async function carregarCofre(nome) {
+  const c = await window.api.obterCredencial(nome);
+  $('#cred-email').value = c.email || '';
+  $('#cred-senha').value = '';
+  $('#cred-senha-hint').textContent = c.temCredencial ? '(salva — deixe em branco p/ manter)' : '';
+  $('#btn-remover-cred').hidden = !c.temCredencial;
 }
 
 function renderTabelas() {
@@ -171,6 +190,23 @@ $('#btn-add-planilha').onclick = async () => {
 };
 
 $('#btn-abrir-pasta').onclick = () => window.api.abrirPasta(estado.empresa);
+
+// Cofre de credenciais
+$('#btn-salvar-cred').onclick = async () => {
+  const email = $('#cred-email').value.trim();
+  const senha = $('#cred-senha').value;
+  const res = await window.api.salvarCredencial(estado.empresa, email, senha);
+  if (!res.ok) { toast(res.erro, 'err'); return; }
+  toast('Credenciais salvas no cofre', 'ok');
+  await carregarCofre(estado.empresa);
+};
+$('#btn-remover-cred').onclick = async () => {
+  const ok = await modal({ titulo: 'Remover credenciais', texto: 'Apagar email e senha do cofre desta empresa?', confirmar: 'Remover', perigo: true });
+  if (!ok) return;
+  await window.api.removerCredencial(estado.empresa);
+  toast('Credenciais removidas', 'ok');
+  await carregarCofre(estado.empresa);
+};
 
 $('#btn-instrucoes').onclick = () => {
   modal({ titulo: `Instruções — ${estado.empresa}`, texto: estado._instrucoes || 'Sem instruções.', confirmar: 'Fechar' });
@@ -295,10 +331,16 @@ function registrarEventos() {
         logLinha('Abrindo o navegador…', 'l-info');
         break;
       case 'login-abrindo':
-        logLinha('Navegador aberto. Faça login na Amazon e FECHE a janela quando terminar.', 'l-info');
+        logLinha('Abrindo o navegador na Amazon. Faça login e FECHE a janela quando terminar.', 'l-info');
+        break;
+      case 'login-preenchido':
+        logLinha('Email e senha preenchidos. Confira, clique em ENTRAR e digite o código de verificação. Depois FECHE a janela.', 'l-info');
         break;
       case 'login-salvo':
-        logLinha('Login salvo com sucesso!', 'l-ok');
+        logLinha('✅ Login confirmado e salvo!', 'l-ok');
+        break;
+      case 'login-nao-concluido':
+        logLinha('⚠ A janela foi fechada antes de concluir o login. Tente de novo.', 'l-warn');
         break;
       case 'produto-inicio': {
         const li = $(`#prod-${ev.index}`);

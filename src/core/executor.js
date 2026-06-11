@@ -12,10 +12,43 @@
 // Erros que abortam tudo (tabela ausente, planilha ilegível) são lançados como Error.
 // Cancelamento: passe shouldCancel() — checado entre produtos.
 
-import { abrirNavegador } from '../browser/connect.js';
-import { caminhoProfile, caminhoTabela, tabelaExiste } from '../lib/empresa.js';
+import { abrirNavegador, pausa } from '../browser/connect.js';
+import { caminhoProfile, caminhoTabela, tabelaExiste, registrarLogin } from '../lib/empresa.js';
 import { lerTabela } from '../lib/excel.js';
 import { criarModelo } from '../flows/amazonModelo.js';
+
+// Está numa página autenticada do Seller Central? (não na tela de login/signin)
+function estaLogado(url) {
+  return /sellercentral\.amazon\.[^/]+\//.test(url) && !/\/ap\/signin|\/ap\/cvf|signin\?/i.test(url);
+}
+
+// Preenche email/senha NA tela de login da Amazon (best-effort). Não dá o submit
+// final nem resolve 2FA — isso é do operador (segurança + a conta sempre pede código).
+async function preencherCredenciais(page, { email, senha }) {
+  try {
+    const emailSel = 'input[type="email"], input[name="email"], #ap_email';
+    const senhaSel = 'input[type="password"], input[name="password"], #ap_password';
+    const remember = 'input[name="rememberMe"], #rememberMe';
+
+    // Passo do email (quando aparece vazio)
+    const emailEl = await page.$(emailSel);
+    if (email && emailEl) {
+      const val = await emailEl.inputValue().catch(() => '');
+      if (!val) { await emailEl.fill(email).catch(() => {}); }
+      // Avança pro passo da senha, se houver botão "continuar"
+      const cont = await page.$('#continue, input#continue');
+      if (cont && !(await page.$(senhaSel))) { await cont.click().catch(() => {}); await pausa(1200); }
+    }
+
+    // Passo da senha
+    const senhaEl = await page.$(senhaSel);
+    if (senha && senhaEl) { await senhaEl.fill(senha).catch(() => {}); }
+
+    // Marca "mantenha-me conectado" pra estender a sessão muito além de 1 dia
+    const rememberEl = await page.$(remember);
+    if (rememberEl) { const c = await rememberEl.isChecked().catch(() => true); if (!c) await rememberEl.check().catch(() => {}); }
+  } catch { /* best-effort: se a tela variar, o operador completa na mão */ }
+}
 
 class ErroExecucao extends Error {
   constructor(codigo, mensagem) {
@@ -119,14 +152,42 @@ export async function executarModelos({ nomeEmpresa, salvar, arquivoTabela, onEv
  * @param {string}   opts.urlAmazon
  * @param {Function} [opts.onEvent]
  */
-export async function abrirParaLogin({ nomeEmpresa, urlAmazon, onEvent = () => {} }) {
+export async function abrirParaLogin({ nomeEmpresa, urlAmazon, credenciais = null, onEvent = () => {} }) {
   onEvent({ type: 'login-abrindo', nome: nomeEmpresa });
   const ctx = await abrirNavegador(caminhoProfile(nomeEmpresa));
   const page = ctx.pages()[0] ?? (await ctx.newPage());
   await page.goto(urlAmazon);
+
+  // Se já abriu logado (sessão ainda válida), confirma de cara.
+  let loginConfirmado = estaLogado(page.url());
+
+  // Cofre: preenche email/senha pra agilizar (operador dá o submit + 2FA).
+  if (!loginConfirmado && credenciais?.email) {
+    await pausa(800);
+    await preencherCredenciais(page, credenciais);
+    onEvent({ type: 'login-preenchido', nome: nomeEmpresa });
+  }
+
+  // Monitora a navegação: marca login confirmado quando entra numa página autenticada.
+  const onNav = () => { if (estaLogado(page.url())) loginConfirmado = true; };
+  page.on('framenavigated', onNav);
+
   await page.waitForEvent('close', { timeout: 0 }).catch(() => {});
   await ctx.close().catch(() => {});
-  onEvent({ type: 'login-salvo', nome: nomeEmpresa });
+
+  if (loginConfirmado) {
+    registrarLogin(nomeEmpresa, isoAgora());
+    onEvent({ type: 'login-salvo', nome: nomeEmpresa });
+  } else {
+    // Fechou sem nunca chegar numa página autenticada → NÃO marca como logado.
+    onEvent({ type: 'login-nao-concluido', nome: nomeEmpresa });
+  }
+}
+
+// Instante ISO — isolado numa função porque `new Date()` é proibido em alguns
+// contextos (workflows); aqui no worker/CLI normal é permitido.
+function isoAgora() {
+  return new Date().toISOString();
 }
 
 export { ErroExecucao };

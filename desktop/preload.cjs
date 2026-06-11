@@ -14,6 +14,11 @@ contextBridge.exposeInMainWorld('api', {
   adicionarPlanilha: (nome) => ipcRenderer.invoke('empresa:adicionarPlanilha', nome),
   removerPlanilha: (nome, arquivo) => ipcRenderer.invoke('empresa:removerPlanilha', nome, arquivo),
 
+  // Cofre de credenciais (senha nunca volta pra UI)
+  salvarCredencial: (nome, email, senha) => ipcRenderer.invoke('credencial:salvar', nome, email, senha),
+  obterCredencial: (nome) => ipcRenderer.invoke('credencial:obter', nome),
+  removerCredencial: (nome) => ipcRenderer.invoke('credencial:remover', nome),
+
   // Jobs (execução / login no worker isolado)
   executar: (opts) => ipcRenderer.invoke('job:executar', opts),
   login: (opts) => ipcRenderer.invoke('job:login', opts),

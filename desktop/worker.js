@@ -28,6 +28,7 @@ async function rodar(job) {
       await abrirParaLogin({
         nomeEmpresa: job.nomeEmpresa,
         urlAmazon: job.urlAmazon,
+        credenciais: job.credenciais || null,
         onEvent: enviar,
       });
     } else {

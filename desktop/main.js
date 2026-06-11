@@ -3,7 +3,7 @@
 // Playwright) vão para um WORKER isolado (utilityProcess), pra um crash do
 // Chrome não derrubar a janela. Conversamos com o worker por mensagens.
 
-import { app, BrowserWindow, ipcMain, dialog, shell, utilityProcess } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, utilityProcess, safeStorage } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -12,6 +12,7 @@ import { config } from '../src/config.js';
 import {
   listarEmpresas, criarEmpresa, removerEmpresa, renomearEmpresa,
   listarTabelas, pastaEmpresa, caminhoProfile, slugify,
+  statusLogin, caminhoCredencial, temCredencial,
 } from '../src/lib/empresa.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -41,18 +42,32 @@ function criarJanela() {
   janela.on('closed', () => { janela = null; });
 }
 
-// ─── Detecta perfil de Chrome já criado (= empresa já logou alguma vez) ──────
-function temLogin(nome) {
-  const p = caminhoProfile(nome);
-  return fs.existsSync(path.join(p, 'Default')) || fs.existsSync(path.join(p, 'Local State'));
-}
-
 function snapshotEmpresas() {
   return listarEmpresas().map((nome) => ({
     nome,
     tabelas: listarTabelas(nome),
-    temLogin: temLogin(nome),
+    login: statusLogin(nome),          // { logado, em, idadeHoras, expirado }
+    temCredencial: temCredencial(nome),
   }));
+}
+
+// ─── Cofre de credenciais (cifrado com DPAPI via safeStorage) ───────────────
+function salvarCredencial(nome, email, senha) {
+  if (!safeStorage.isEncryptionAvailable()) {
+    throw new Error('Cofre indisponível neste sistema (cifragem do SO não disponível).');
+  }
+  const blob = safeStorage.encryptString(JSON.stringify({ email, senha }));
+  fs.writeFileSync(caminhoCredencial(nome), blob);
+}
+
+function lerCredencial(nome) {
+  const p = caminhoCredencial(nome);
+  if (!fs.existsSync(p) || !safeStorage.isEncryptionAvailable()) return null;
+  try {
+    return JSON.parse(safeStorage.decryptString(fs.readFileSync(p)));
+  } catch {
+    return null;
+  }
 }
 
 // ─── IPC: CRUD e leitura (síncrono, roda no main) ───────────────────────────
@@ -133,6 +148,40 @@ ipcMain.handle('empresa:removerPlanilha', (_e, nome, arquivo) => {
   }
 });
 
+// ─── IPC: cofre de credenciais ──────────────────────────────────────────────
+ipcMain.handle('credencial:salvar', (_e, nome, email, senha) => {
+  try {
+    let senhaFinal = senha;
+    if (!senhaFinal) {
+      // Campo em branco = manter a senha já guardada (a senha nunca volta pra UI).
+      const existente = lerCredencial(nome);
+      if (existente?.senha) senhaFinal = existente.senha;
+      else return { ok: false, erro: 'Informe a senha.' };
+    }
+    if (!email) return { ok: false, erro: 'Informe o e-mail.' };
+    salvarCredencial(nome, email, senhaFinal);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, erro: e.message };
+  }
+});
+
+// Retorna só o email (e se tem senha) — NUNCA devolve a senha pra UI.
+ipcMain.handle('credencial:obter', (_e, nome) => {
+  const c = lerCredencial(nome);
+  if (!c) return { temCredencial: false, email: '' };
+  return { temCredencial: true, email: c.email || '' };
+});
+
+ipcMain.handle('credencial:remover', (_e, nome) => {
+  try {
+    fs.rmSync(caminhoCredencial(nome), { force: true });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, erro: e.message };
+  }
+});
+
 // ─── IPC: jobs (execução / login) — vão para o worker isolado ───────────────
 
 function iniciarWorker(job) {
@@ -167,7 +216,9 @@ ipcMain.handle('job:executar', (_e, { nomeEmpresa, salvar, arquivoTabela }) => {
 });
 
 ipcMain.handle('job:login', (_e, { nomeEmpresa }) => {
-  return iniciarWorker({ cmd: 'login', nomeEmpresa, urlAmazon: config.amazon.modelos });
+  // Decifra as credenciais no main e passa pro worker preencher (se houver cofre).
+  const credenciais = lerCredencial(nomeEmpresa);
+  return iniciarWorker({ cmd: 'login', nomeEmpresa, urlAmazon: config.amazon.modelos, credenciais });
 });
 
 ipcMain.handle('job:cancelar', () => {

@@ -90,6 +90,47 @@ export function caminhoProfile(nome) {
   return path.join(pastaEmpresa(nome), '.chrome-profile');
 }
 
+// Arquivo que registra o ÚLTIMO login confirmado (não só "abriu o navegador").
+export function caminhoLoginInfo(nome) {
+  return path.join(pastaEmpresa(nome), 'login.json');
+}
+
+// Cofre local cifrado com as credenciais da Amazon (DPAPI via Electron safeStorage).
+export function caminhoCredencial(nome) {
+  return path.join(pastaEmpresa(nome), 'credenciais.bin');
+}
+
+// A Amazon Seller Central derruba a sessão ~1 dia. Acima disso, alertamos.
+const HORAS_VALIDADE_LOGIN = 20;
+
+/**
+ * Status real de login da empresa — baseado num login CONFIRMADO, não na
+ * existência do perfil (que é criado só por abrir o navegador).
+ * @returns {{ logado: boolean, em: string|null, idadeHoras: number|null, expirado: boolean }}
+ */
+export function statusLogin(nome) {
+  const p = caminhoLoginInfo(nome);
+  if (!fs.existsSync(p)) return { logado: false, em: null, idadeHoras: null, expirado: false };
+  try {
+    const info = JSON.parse(fs.readFileSync(p, 'utf8'));
+    if (!info.ok || !info.em) return { logado: false, em: null, idadeHoras: null, expirado: false };
+    const idadeHoras = (Date.now() - new Date(info.em).getTime()) / 3_600_000;
+    return { logado: true, em: info.em, idadeHoras, expirado: idadeHoras > HORAS_VALIDADE_LOGIN };
+  } catch {
+    return { logado: false, em: null, idadeHoras: null, expirado: false };
+  }
+}
+
+/** Marca um login confirmado agora (recebe o instante de fora — Date é proibido em alguns contextos). */
+export function registrarLogin(nome, instanteISO) {
+  fs.writeFileSync(caminhoLoginInfo(nome), JSON.stringify({ ok: true, em: instanteISO }), 'utf8');
+}
+
+/** Indica se a empresa tem credenciais salvas no cofre (sem revelar a senha). */
+export function temCredencial(nome) {
+  return fs.existsSync(caminhoCredencial(nome));
+}
+
 /**
  * Lista os arquivos .xlsx na pasta da empresa (ordenados).
  * Ignora arquivos temporários do Excel (começam com "~$").

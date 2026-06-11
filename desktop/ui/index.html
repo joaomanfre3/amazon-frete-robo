@@ -65,10 +65,27 @@
           <p class="status-linha">
             Login: <span id="status-login" class="tag">—</span>
           </p>
+
+          <div class="cofre">
+            <label class="campo-mini">
+              <span>E-mail da conta</span>
+              <input type="email" id="cred-email" placeholder="email@empresa.com" autocomplete="off" />
+            </label>
+            <label class="campo-mini">
+              <span>Senha <small id="cred-senha-hint"></small></span>
+              <input type="password" id="cred-senha" placeholder="••••••••" autocomplete="new-password" />
+            </label>
+            <div class="cofre-acoes">
+              <button class="btn btn-sm" id="btn-salvar-cred">💾 Salvar no cofre</button>
+              <button class="btn btn-sm btn-ghost" id="btn-remover-cred" hidden>Remover</button>
+            </div>
+          </div>
+
           <p class="hint">
-            O robô usa o login salvo deste perfil. Faça login uma vez; depois ele entra sozinho.
+            O cofre guarda email e senha <b>cifrados neste computador</b>. No login, o robô
+            preenche pra você — você confere, clica em entrar e digita o código de verificação.
           </p>
-          <button class="btn btn-block" id="btn-login">Fazer login na Amazon</button>
+          <button class="btn btn-block btn-primary" id="btn-login">Fazer login na Amazon</button>
         </div>
       </div>
 
