@@ -87,16 +87,22 @@ loga 1x por empresa.
 
 ## Fases
 
-- **Fase 0 — Descoberta (Amazon):** mapear a tela de *edição* de modelo e confirmar a
-  captura estável do `amazon_template_id`. **Maior risco** — precisa de conta logada.
+- **Fase 0 — Descoberta (Amazon):** ⏸️ PENDENTE (precisa do dono logado) — mapear a tela
+  de *edição* de modelo e confirmar a captura estável do `amazon_template_id`.
 - **Fase 1 — Cérebro:** ✅ schema no Neon (`db/migrations/0001_schema.sql`), auth própria,
-  claim atômico. Projeto `frete-amazon-robo` (id `old-silence-03117274`).
-- **Fase 2 — App:** login do operador, sincronizar do cérebro, importar planilha → banco,
-  claim de tarefa.
-- **Fase 3 — Robô criar + editar:** ensinar o Playwright a editar modelo existente.
-- **Fase 4 — Distribuição:** auto-update + `.exe` (electron-builder) + instalar nos 5 PCs.
+  claim atômico. Projeto `frete-amazon-robo` (id `old-silence-03117274`). Testado ponta a ponta.
+- **Fase 2 — App:** ✅ login do operador, empresas/modelos do cérebro, importar planilha →
+  banco, claim. `src/db/*` + handlers no `desktop/main.js` + UI reescrita.
+- **Fase 3 — Robô criar + editar:** ✅ estruturado (`criarModelo` captura template_id,
+  `editarModelo` edita o existente). ⚠️ a URL de edição e a captura do id precisam de
+  validação na Fase 0.
+- **Fase 4 — Distribuição:** 🔧 configurada (`build` no package.json, `.env` em
+  extraResources, publish GitHub). Ver `docs/DISTRIBUICAO.md`. Executar com o dono.
 
 ## Pendências que dependem do dono
 
-- **Fase 0:** acesso a uma conta Amazon Seller Central logada, com modelos já criados,
-  com a sessão válida (login não expirado) para mapear a edição.
+- **Fase 0:** conta Amazon Seller Central logada, com modelos já criados e sessão válida,
+  para mapear a edição e confirmar a captura do `amazon_template_id`.
+- **Validar o app interligado:** logar como operador, criar empresa, importar planilha,
+  conferir os modelos no cérebro, rodar uma simulação.
+- **Fase 4:** gerar o `.exe` (`npm run dist`) e instalar nos 5 PCs.

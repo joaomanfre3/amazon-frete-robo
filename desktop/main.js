@@ -7,6 +7,11 @@ import { app, BrowserWindow, ipcMain, dialog, shell, utilityProcess, safeStorage
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import dotenv from 'dotenv';
+
+// O .env (com a conexão do cérebro) fica na raiz em dev e em resources/ quando
+// empacotado. Carregado aqui antes de qualquer query (o pool é lazy).
+dotenv.config(app.isPackaged ? { path: path.join(process.resourcesPath, '.env') } : {});
 
 import { config } from '../src/config.js';
 import {

@@ -46,6 +46,17 @@
       {
         "from": "empresas/.gitkeep",
         "to": "empresas/.gitkeep"
+      },
+      {
+        "from": ".env",
+        "to": ".env"
+      }
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "joaomanfre3",
+        "repo": "amazon-frete-robo"
       }
     ]
   }
