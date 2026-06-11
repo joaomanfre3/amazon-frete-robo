@@ -11,8 +11,8 @@ import { fileURLToPath } from 'node:url';
 import { config } from '../src/config.js';
 import {
   listarEmpresas, criarEmpresa, removerEmpresa, renomearEmpresa,
-  listarTabelas, pastaEmpresa, caminhoProfile, slugify,
-  statusLogin, caminhoCredencial, temCredencial,
+  listarTabelas, pastaEmpresa, caminhoInstrucoes, slugify,
+  statusLogin, caminhoCredencial,
 } from '../src/lib/empresa.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -47,9 +47,15 @@ function snapshotEmpresas() {
     nome,
     tabelas: listarTabelas(nome),
     login: statusLogin(nome),          // { logado, em, idadeHoras, expirado }
-    temCredencial: temCredencial(nome),
   }));
 }
+
+// Padroniza handlers que mutam algo: retorno { ok, ... } e captura de erro.
+// O callback só retorna os campos extras (ou lança Error em caso de falha).
+const handleOk = (canal, fn) => ipcMain.handle(canal, async (e, ...args) => {
+  try { return { ok: true, ...(await fn(e, ...args)) }; }
+  catch (err) { return { ok: false, erro: err.message }; }
+});
 
 // ─── Cofre de credenciais (cifrado com DPAPI via safeStorage) ───────────────
 function salvarCredencial(nome, email, senha) {
@@ -73,113 +79,73 @@ function lerCredencial(nome) {
 // ─── IPC: CRUD e leitura (síncrono, roda no main) ───────────────────────────
 
 ipcMain.handle('empresas:listar', () => snapshotEmpresas());
-
-ipcMain.handle('empresa:criar', (_e, nomeBruto) => {
-  const slug = slugify(nomeBruto);
-  if (slug.length < 2) return { ok: false, erro: 'Nome muito curto.' };
-  try {
-    criarEmpresa(slug);
-    return { ok: true, slug };
-  } catch (e) {
-    return { ok: false, erro: e.message };
-  }
-});
-
-ipcMain.handle('empresa:renomear', (_e, antigo, novoBruto) => {
-  const slug = slugify(novoBruto);
-  if (slug.length < 2) return { ok: false, erro: 'Nome muito curto.' };
-  try {
-    renomearEmpresa(antigo, slug);
-    return { ok: true, slug };
-  } catch (e) {
-    return { ok: false, erro: e.message };
-  }
-});
-
-ipcMain.handle('empresa:remover', (_e, nome) => {
-  try {
-    removerEmpresa(nome);
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, erro: e.message };
-  }
-});
-
 ipcMain.handle('empresa:tabelas', (_e, nome) => listarTabelas(nome));
+ipcMain.handle('empresa:statusLogin', (_e, nome) => statusLogin(nome));
+ipcMain.handle('empresa:abrirPasta', (_e, nome) => shell.openPath(pastaEmpresa(nome)));
 
 ipcMain.handle('empresa:instrucoes', (_e, nome) => {
-  const p = path.join(pastaEmpresa(nome), 'INSTRUCOES.txt');
+  const p = caminhoInstrucoes(nome);
   return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : '';
 });
 
-ipcMain.handle('empresa:abrirPasta', (_e, nome) => {
-  return shell.openPath(pastaEmpresa(nome));
+handleOk('empresa:criar', (_e, nomeBruto) => {
+  const slug = slugify(nomeBruto);
+  if (slug.length < 2) throw new Error('Nome muito curto.');
+  criarEmpresa(slug);
+  return { slug };
 });
 
+handleOk('empresa:renomear', (_e, antigo, novoBruto) => {
+  const slug = slugify(novoBruto);
+  if (slug.length < 2) throw new Error('Nome muito curto.');
+  renomearEmpresa(antigo, slug);
+  return { slug };
+});
+
+handleOk('empresa:remover', (_e, nome) => { removerEmpresa(nome); });
+
 // Escolhe um .xlsx pelo sistema e copia para a pasta da empresa.
-ipcMain.handle('empresa:adicionarPlanilha', async (_e, nome) => {
+handleOk('empresa:adicionarPlanilha', async (_e, nome) => {
   const res = await dialog.showOpenDialog(janela, {
     title: 'Escolha a planilha de fretes (.xlsx)',
     filters: [{ name: 'Planilhas Excel', extensions: ['xlsx'] }],
     properties: ['openFile'],
   });
   if (res.canceled || !res.filePaths.length) return { ok: false, cancelado: true };
-  const origem = res.filePaths[0];
-  const destino = path.join(pastaEmpresa(nome), path.basename(origem));
-  try {
-    fs.copyFileSync(origem, destino);
-    return { ok: true, arquivo: path.basename(origem) };
-  } catch (e) {
-    return { ok: false, erro: e.message };
-  }
+  const arquivo = path.basename(res.filePaths[0]);
+  fs.copyFileSync(res.filePaths[0], path.join(pastaEmpresa(nome), arquivo));
+  return { arquivo };
 });
 
-ipcMain.handle('empresa:removerPlanilha', (_e, nome, arquivo) => {
-  try {
-    const alvo = path.join(pastaEmpresa(nome), arquivo);
-    // Só permite remover .xlsx dentro da pasta da empresa (segurança).
-    if (!alvo.startsWith(pastaEmpresa(nome)) || !arquivo.toLowerCase().endsWith('.xlsx')) {
-      return { ok: false, erro: 'Arquivo inválido.' };
-    }
-    fs.rmSync(alvo, { force: true });
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, erro: e.message };
+handleOk('empresa:removerPlanilha', (_e, nome, arquivo) => {
+  const alvo = path.join(pastaEmpresa(nome), arquivo);
+  // Só permite remover .xlsx dentro da pasta da empresa (segurança).
+  if (!alvo.startsWith(pastaEmpresa(nome)) || !arquivo.toLowerCase().endsWith('.xlsx')) {
+    throw new Error('Arquivo inválido.');
   }
+  fs.rmSync(alvo, { force: true });
 });
 
 // ─── IPC: cofre de credenciais ──────────────────────────────────────────────
-ipcMain.handle('credencial:salvar', (_e, nome, email, senha) => {
-  try {
-    let senhaFinal = senha;
-    if (!senhaFinal) {
-      // Campo em branco = manter a senha já guardada (a senha nunca volta pra UI).
-      const existente = lerCredencial(nome);
-      if (existente?.senha) senhaFinal = existente.senha;
-      else return { ok: false, erro: 'Informe a senha.' };
-    }
-    if (!email) return { ok: false, erro: 'Informe o e-mail.' };
-    salvarCredencial(nome, email, senhaFinal);
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, erro: e.message };
+handleOk('credencial:salvar', (_e, nome, email, senha) => {
+  let senhaFinal = senha;
+  if (!senhaFinal) {
+    // Campo em branco = manter a senha já guardada (a senha nunca volta pra UI).
+    const existente = lerCredencial(nome);
+    if (existente?.senha) senhaFinal = existente.senha;
+    else throw new Error('Informe a senha.');
   }
+  if (!email) throw new Error('Informe o e-mail.');
+  salvarCredencial(nome, email, senhaFinal);
 });
+
+handleOk('credencial:remover', (_e, nome) => { fs.rmSync(caminhoCredencial(nome), { force: true }); });
 
 // Retorna só o email (e se tem senha) — NUNCA devolve a senha pra UI.
 ipcMain.handle('credencial:obter', (_e, nome) => {
   const c = lerCredencial(nome);
   if (!c) return { temCredencial: false, email: '' };
   return { temCredencial: true, email: c.email || '' };
-});
-
-ipcMain.handle('credencial:remover', (_e, nome) => {
-  try {
-    fs.rmSync(caminhoCredencial(nome), { force: true });
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, erro: e.message };
-  }
 });
 
 // ─── IPC: jobs (execução / login) — vão para o worker isolado ───────────────

@@ -63,10 +63,8 @@ async function renderEmpresas() {
     const tabTag = nT === 0
       ? `<span class="tag tag-off">sem planilha</span>`
       : `<span class="tag tag-ok">${nT} planilha${nT > 1 ? 's' : ''}</span>`;
-    let loginTag;
-    if (!emp.login.logado) loginTag = `<span class="tag tag-warn">sem login</span>`;
-    else if (emp.login.expirado) loginTag = `<span class="tag tag-warn">login expirado</span>`;
-    else loginTag = `<span class="tag tag-ok">logado</span>`;
+    const lt = classificarLogin(emp.login);
+    const loginTag = `<span class="tag ${lt.classe}">${lt.texto}</span>`;
 
     const card = document.createElement('div');
     card.className = 'empresa-card';
@@ -124,14 +122,19 @@ function descreveIdade(h) {
   return `há ${Math.round(h / 24)} dia(s)`;
 }
 
+// Decisão única "estado de login → {classe, texto}". comIdade detalha p/ a tela de empresa.
+function classificarLogin(login, comIdade = false) {
+  if (!login?.logado) return { classe: 'tag-warn', texto: comIdade ? 'ainda não' : 'sem login' };
+  const idade = comIdade ? ` (${descreveIdade(login.idadeHoras)})` : '';
+  if (login.expirado) return { classe: 'tag-warn', texto: `${comIdade ? 'pode ter expirado' : 'login expirado'}${idade}` };
+  return { classe: 'tag-ok', texto: `${comIdade ? 'logado ✓' : 'logado'}${idade}` };
+}
+
 async function renderStatusLogin(nome) {
-  const empresas = await window.api.listarEmpresas();
-  const emp = empresas.find((e) => e.nome === nome);
-  const tag = $('#status-login');
-  const lg = emp?.login;
-  if (!lg?.logado) { tag.textContent = 'ainda não'; tag.className = 'tag tag-warn'; }
-  else if (lg.expirado) { tag.textContent = `pode ter expirado (logado ${descreveIdade(lg.idadeHoras)})`; tag.className = 'tag tag-warn'; }
-  else { tag.textContent = `logado ✓ (${descreveIdade(lg.idadeHoras)})`; tag.className = 'tag tag-ok'; }
+  const login = await window.api.statusLogin(nome);
+  const lt = classificarLogin(login, true);
+  $('#status-login').textContent = lt.texto;
+  $('#status-login').className = `tag ${lt.classe}`;
 }
 
 async function carregarCofre(nome) {

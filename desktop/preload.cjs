@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('api', {
   renomearEmpresa: (antigo, novo) => ipcRenderer.invoke('empresa:renomear', antigo, novo),
   removerEmpresa: (nome) => ipcRenderer.invoke('empresa:remover', nome),
   listarTabelas: (nome) => ipcRenderer.invoke('empresa:tabelas', nome),
+  statusLogin: (nome) => ipcRenderer.invoke('empresa:statusLogin', nome),
   lerInstrucoes: (nome) => ipcRenderer.invoke('empresa:instrucoes', nome),
   abrirPasta: (nome) => ipcRenderer.invoke('empresa:abrirPasta', nome),
   adicionarPlanilha: (nome) => ipcRenderer.invoke('empresa:adicionarPlanilha', nome),

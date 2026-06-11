@@ -63,7 +63,7 @@ export function criarEmpresa(nome) {
   const pasta = pastaEmpresa(nome);
   if (fs.existsSync(pasta)) throw new Error(`Empresa "${nome}" já existe.`);
   fs.mkdirSync(pasta, { recursive: true });
-  fs.writeFileSync(path.join(pasta, 'INSTRUCOES.txt'), gerarInstrucoes(nome), 'utf8');
+  fs.writeFileSync(caminhoInstrucoes(nome), gerarInstrucoes(nome), 'utf8');
   return pasta;
 }
 
@@ -79,7 +79,7 @@ export function renomearEmpresa(nomeAntigo, nomeNovo) {
   if (!fs.existsSync(pastaAntiga)) throw new Error(`Empresa "${nomeAntigo}" não encontrada.`);
   if (fs.existsSync(pastaNova)) throw new Error(`Empresa "${nomeNovo}" já existe.`);
   fs.renameSync(pastaAntiga, pastaNova);
-  fs.writeFileSync(path.join(pastaNova, 'INSTRUCOES.txt'), gerarInstrucoes(nomeNovo), 'utf8');
+  fs.writeFileSync(caminhoInstrucoes(nomeNovo), gerarInstrucoes(nomeNovo), 'utf8');
 }
 
 export function pastaEmpresa(nome) {
@@ -88,6 +88,10 @@ export function pastaEmpresa(nome) {
 
 export function caminhoProfile(nome) {
   return path.join(pastaEmpresa(nome), '.chrome-profile');
+}
+
+export function caminhoInstrucoes(nome) {
+  return path.join(pastaEmpresa(nome), 'INSTRUCOES.txt');
 }
 
 // Arquivo que registra o ÚLTIMO login confirmado (não só "abriu o navegador").
@@ -121,7 +125,7 @@ export function statusLogin(nome) {
   }
 }
 
-/** Marca um login confirmado agora (recebe o instante de fora — Date é proibido em alguns contextos). */
+/** Marca um login confirmado. O instante (ISO) é fornecido pelo chamador. */
 export function registrarLogin(nome, instanteISO) {
   fs.writeFileSync(caminhoLoginInfo(nome), JSON.stringify({ ok: true, em: instanteISO }), 'utf8');
 }

@@ -176,18 +176,12 @@ export async function abrirParaLogin({ nomeEmpresa, urlAmazon, credenciais = nul
   await ctx.close().catch(() => {});
 
   if (loginConfirmado) {
-    registrarLogin(nomeEmpresa, isoAgora());
+    registrarLogin(nomeEmpresa, new Date().toISOString());
     onEvent({ type: 'login-salvo', nome: nomeEmpresa });
   } else {
     // Fechou sem nunca chegar numa página autenticada → NÃO marca como logado.
     onEvent({ type: 'login-nao-concluido', nome: nomeEmpresa });
   }
-}
-
-// Instante ISO — isolado numa função porque `new Date()` é proibido em alguns
-// contextos (workflows); aqui no worker/CLI normal é permitido.
-function isoAgora() {
-  return new Date().toISOString();
 }
 
 export { ErroExecucao };

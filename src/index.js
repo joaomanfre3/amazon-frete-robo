@@ -1,12 +1,11 @@
 import inquirer from 'inquirer';
 import chalk from 'chalk';
 import fs from 'node:fs';
-import path from 'node:path';
 import readline from 'node:readline';
 import { config } from './config.js';
 import {
   listarEmpresas, criarEmpresa, removerEmpresa, renomearEmpresa,
-  tabelaExiste, listarTabelas, pastaEmpresa, slugify,
+  tabelaExiste, listarTabelas, caminhoInstrucoes, slugify,
 } from './lib/empresa.js';
 import { carregarPlano, executarModelos, abrirParaLogin } from './core/executor.js';
 
@@ -170,7 +169,7 @@ async function menuEmpresa(nomeEmpresa) {
       return menuEmpresa(nomeEmpresa);
 
     case 'instrucoes': {
-      const instrPath = path.join(pastaEmpresa(nomeEmpresa), 'INSTRUCOES.txt');
+      const instrPath = caminhoInstrucoes(nomeEmpresa);
       if (fs.existsSync(instrPath)) {
         console.log('\n' + chalk.white(fs.readFileSync(instrPath, 'utf8')));
       }
