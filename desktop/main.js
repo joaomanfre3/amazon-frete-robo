@@ -14,11 +14,21 @@ import {
   listarTabelas, pastaEmpresa, caminhoInstrucoes, slugify,
   statusLogin, caminhoCredencial,
 } from '../src/lib/empresa.js';
+import { pingBanco, temBanco } from '../src/db/cliente.js';
+import { autenticar } from '../src/db/operadores.js';
+import {
+  listarEmpresasDB, criarEmpresaDB, renomearEmpresaDB, removerEmpresaDB,
+} from '../src/db/empresas.js';
+import {
+  importarProdutos, listarModelosDB, pegarTarefas, tarefasPendentes, reportarResultado,
+} from '../src/db/modelos.js';
+import { lerTabela } from '../src/lib/excel.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 let janela = null;
 let workerAtual = null;
+let operadorAtual = null;   // { id, email, nome } após login
 
 function criarJanela() {
   janela = new BrowserWindow({
@@ -148,9 +158,98 @@ ipcMain.handle('credencial:obter', (_e, nome) => {
   return { temCredencial: true, email: c.email || '' };
 });
 
+// ─── IPC: cérebro central (Neon) — auth + empresas + modelos ────────────────
+
+ipcMain.handle('db:status', async () => {
+  if (!temBanco()) return { ok: false, erro: 'Cérebro não configurado (DATABASE_URL ausente).' };
+  return pingBanco();
+});
+
+ipcMain.handle('auth:atual', () => operadorAtual);
+
+handleOk('auth:login', async (_e, email, senha) => {
+  const op = await autenticar(email, senha);
+  if (!op) throw new Error('E-mail ou senha inválidos.');
+  operadorAtual = op;
+  return { operador: op };
+});
+
+ipcMain.handle('auth:logout', () => { operadorAtual = null; });
+
+// Lista as empresas do banco (compartilhadas) + status de login LOCAL por slug.
+ipcMain.handle('empresasDb:listar', async () => {
+  const empresas = await listarEmpresasDB();
+  return empresas.map((e) => ({ ...e, login: statusLogin(e.slug) }));
+});
+
+handleOk('empresaDb:criar', async (_e, nomeBruto) => {
+  if (!operadorAtual) throw new Error('Faça login primeiro.');
+  const nome = String(nomeBruto).trim();
+  const slug = slugify(nome);
+  if (slug.length < 2) throw new Error('Nome muito curto.');
+  const emp = await criarEmpresaDB(nome, slug, operadorAtual.id);
+  return { empresa: emp };
+});
+
+handleOk('empresaDb:renomear', async (_e, id, nomeBruto) => {
+  const nome = String(nomeBruto).trim();
+  const slug = slugify(nome);
+  if (slug.length < 2) throw new Error('Nome muito curto.');
+  await renomearEmpresaDB(id, nome, slug);
+  return { slug };
+});
+
+handleOk('empresaDb:remover', async (_e, id) => { await removerEmpresaDB(id); });
+
+ipcMain.handle('empresaDb:modelos', async (_e, id) => listarModelosDB(id));
+
+// Importa uma planilha .xlsx pro banco (parseia → produtos/fretes/modelos).
+handleOk('empresaDb:importar', async (_e, { empresaId, slug }) => {
+  if (!operadorAtual) throw new Error('Faça login primeiro.');
+  const res = await dialog.showOpenDialog(janela, {
+    title: 'Escolha a planilha de fretes (.xlsx)',
+    filters: [{ name: 'Planilhas Excel', extensions: ['xlsx'] }],
+    properties: ['openFile'],
+  });
+  if (res.canceled || !res.filePaths.length) return { ok: false, cancelado: true };
+  const arquivo = path.basename(res.filePaths[0]);
+  const produtos = lerTabela(res.filePaths[0]);
+  if (!produtos.length) throw new Error('Nenhuma aba de produto encontrada na planilha.');
+  // Garante a pasta local do slug (guarda o perfil de Chrome / cofre desta máquina).
+  fs.mkdirSync(pastaEmpresa(slug), { recursive: true });
+  const resumo = await importarProdutos(empresaId, produtos, arquivo, operadorAtual.id);
+  return { arquivo, resumo };
+});
+
+// Executa os modelos pendentes da empresa. salvar=true faz claim + grava na
+// Amazon + reporta ao banco; salvar=false simula (sem claim, sem reportar).
+handleOk('jobDb:executar', async (_e, { empresaId, slug, salvar }) => {
+  if (!operadorAtual) throw new Error('Faça login primeiro.');
+  fs.mkdirSync(pastaEmpresa(slug), { recursive: true });
+
+  const tarefas = salvar
+    ? await pegarTarefas(empresaId, operadorAtual.id)   // claim atômico
+    : await tarefasPendentes(empresaId);                // preview sem claim
+  if (!tarefas.length) return { ok: true, vazio: true };
+
+  const r = iniciarWorker(
+    { cmd: 'executar-db', slug, tarefas, salvar },
+    (msg) => {
+      if (!salvar) return;  // simulação não grava status
+      if (msg.type === 'produto-fim' && msg.modeloId) {
+        reportarResultado(msg.modeloId, { ok: true, amazonTemplateId: msg.amazonTemplateId }).catch(() => {});
+      } else if (msg.type === 'produto-erro' && msg.modeloId) {
+        reportarResultado(msg.modeloId, { ok: false, erro: msg.msg }).catch(() => {});
+      }
+    },
+  );
+  if (!r.ok) throw new Error(r.erro);
+  return { total: tarefas.length };
+});
+
 // ─── IPC: jobs (execução / login) — vão para o worker isolado ───────────────
 
-function iniciarWorker(job) {
+function iniciarWorker(job, aoEvento) {
   if (workerAtual) {
     return { ok: false, erro: 'Já há uma tarefa em andamento.' };
   }
@@ -161,6 +260,7 @@ function iniciarWorker(job) {
 
   worker.on('message', (msg) => {
     janela?.webContents.send('job:evento', msg);
+    if (aoEvento) aoEvento(msg);   // hook p/ reportar ao banco (modo cérebro)
     if (msg.type === 'encerrado') {
       workerAtual = null;
     }

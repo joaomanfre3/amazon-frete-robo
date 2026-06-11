@@ -75,18 +75,8 @@ function preencherNaPagina({ nome, DATA }) {
   return { ok, total: rows.length, faltou };
 }
 
-/**
- * Cria um modelo de envio na Amazon para um produto.
- *
- * @param {object} ctx     Contexto Playwright (com perfil logado da empresa)
- * @param {string} nome    Nome do modelo (= nome da aba na planilha)
- * @param {Array}  regioes Array de { regiao, frete, prazo } lido do Excel
- * @param {boolean} salvar Se false (padrão), preenche mas NÃO salva (dry-run)
- */
-export async function criarModelo(ctx, { nome, regioes, salvar = false }) {
-  if (!regioes?.length) throw new Error(`Nenhuma região encontrada para "${nome}".`);
-
-  // Monta mapa estado|tipo → { p: preço, t: prazo Amazon }
+// Mapa estado|tipo → { p: preço BR, t: faixa de prazo Amazon } (reusado por criar/editar)
+function montarDATA(regioes) {
   const DATA = {};
   for (const r of regioes) {
     const p = parsarRegiao(r.regiao);
@@ -95,6 +85,24 @@ export async function criarModelo(ctx, { nome, regioes, salvar = false }) {
       t: prazoParaFaixa(r.prazo),
     };
   }
+  return DATA;
+}
+
+// Tenta extrair o ID do template da URL após salvar (vários formatos possíveis).
+// ⚠️ PENDENTE FASE 0: confirmar o formato real com uma conta logada.
+function extrairTemplateId(url) {
+  const m = url.match(/templateId["%:=/]+([A-Za-z0-9_-]{6,})/i)
+        || url.match(/[?&]id=([A-Za-z0-9_-]{6,})/i);
+  return m ? m[1] : null;
+}
+
+/**
+ * Cria um modelo de envio na Amazon para um produto.
+ * @returns {{ ok, total, faltou, amazonTemplateId }}
+ */
+export async function criarModelo(ctx, { nome, regioes, salvar = false }) {
+  if (!regioes?.length) throw new Error(`Nenhuma região encontrada para "${nome}".`);
+  const DATA = montarDATA(regioes);
 
   const page = ctx.pages()[0] ?? (await ctx.newPage());
   await page.goto(config.amazon.criarModelo);
@@ -104,11 +112,47 @@ export async function criarModelo(ctx, { nome, regioes, salvar = false }) {
   const res = await page.evaluate(preencherNaPagina, { nome, DATA });
   if (res.erro) throw new Error(res.erro);
 
+  let amazonTemplateId = null;
+  if (salvar) {
+    await page.click('#submitButton-announce');
+    await page.waitForLoadState('networkidle').catch(() => {});
+    await pausa(1500);
+    amazonTemplateId = extrairTemplateId(page.url());
+  }
+
+  return { ...res, amazonTemplateId };
+}
+
+/**
+ * ATUALIZA um modelo JÁ EXISTENTE na Amazon, pelo seu ID — preserva o vínculo
+ * com os produtos linkados (nunca delete+recria).
+ * ⚠️ PENDENTE FASE 0: a URL/fluxo de edição abaixo é a melhor hipótese; precisa
+ * ser confirmada numa conta logada com modelos. O preenchimento reusa a mesma
+ * lógica da criação (a tabela de regiões é idêntica nas duas telas).
+ * @returns {{ ok, total, faltou, amazonTemplateId }}
+ */
+export async function editarModelo(ctx, { amazonTemplateId, nome, regioes, salvar = false }) {
+  if (!amazonTemplateId) throw new Error('Sem amazon_template_id — não dá para editar (use criar).');
+  if (!regioes?.length) throw new Error(`Nenhuma região encontrada para "${nome}".`);
+  const DATA = montarDATA(regioes);
+
+  const urlEdicao = `https://sellercentral.amazon.com.br/sbr/template?request=${
+    encodeURIComponent(JSON.stringify({ action: 'edit', templateId: amazonTemplateId }))}`;
+
+  const page = ctx.pages()[0] ?? (await ctx.newPage());
+  await page.goto(urlEdicao);
+  await page.waitForSelector('input[name="templateName"]', { timeout: 30_000 });
+  await pausa();
+
+  // Mesma função de preenchimento — a grade de regiões é igual na edição.
+  const res = await page.evaluate(preencherNaPagina, { nome, DATA });
+  if (res.erro) throw new Error(res.erro);
+
   if (salvar) {
     await page.click('#submitButton-announce');
     await page.waitForLoadState('networkidle').catch(() => {});
     await pausa(1500);
   }
 
-  return res;
+  return { ...res, amazonTemplateId };
 }

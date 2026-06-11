@@ -10,7 +10,7 @@
 //            { type: 'erro-fatal', codigo, msg }   quando o core lança
 //            { type: 'encerrado' }                 logo antes de sair
 
-import { executarModelos, abrirParaLogin } from '../src/core/executor.js';
+import { executarModelos, executarTarefas, abrirParaLogin } from '../src/core/executor.js';
 
 let cancelar = false;
 const enviar = (msg) => process.parentPort.postMessage(msg);
@@ -20,6 +20,15 @@ async function rodar(job) {
     if (job.cmd === 'executar') {
       await executarModelos({
         nomeEmpresa: job.nomeEmpresa,
+        salvar: job.salvar,
+        arquivoTabela: job.arquivoTabela,
+        onEvent: enviar,
+        shouldCancel: () => cancelar,
+      });
+    } else if (job.cmd === 'executar-db') {
+      await executarTarefas({
+        slug: job.slug,
+        tarefas: job.tarefas,
         salvar: job.salvar,
         onEvent: enviar,
         shouldCancel: () => cancelar,

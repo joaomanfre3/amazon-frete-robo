@@ -16,13 +16,32 @@
       </div>
     </div>
     <div class="topbar-right">
+      <span id="op-nome" class="op-nome" hidden></span>
+      <button id="btn-logout" class="btn btn-sm btn-ghost" hidden>Sair</button>
       <span id="badge-status" class="pill pill-idle">Pronto</span>
     </div>
   </header>
 
   <main id="app">
-    <!-- ░░░ TELA 1: LISTA DE EMPRESAS ░░░ -->
-    <section class="view" data-view="empresas">
+    <!-- ░░░ TELA 0: LOGIN DO OPERADOR ░░░ -->
+    <section class="view view-login" data-view="login">
+      <div class="login-box">
+        <div class="login-logo">🚚</div>
+        <h1>Entrar</h1>
+        <p class="login-sub">Acesse com seu usuário do sistema.</p>
+        <div id="db-aviso" class="db-aviso" hidden></div>
+        <label class="campo-mini"><span>E-mail</span>
+          <input type="email" id="login-email" placeholder="voce@empresa.com" autocomplete="username" />
+        </label>
+        <label class="campo-mini"><span>Senha</span>
+          <input type="password" id="login-senha" placeholder="••••••••" autocomplete="current-password" />
+        </label>
+        <button class="btn btn-primary btn-block" id="btn-entrar">Entrar</button>
+      </div>
+    </section>
+
+    <!-- ░░░ TELA 1: EMPRESAS (do cérebro) ░░░ -->
+    <section class="view" data-view="empresas" hidden>
       <div class="view-head">
         <h1>Empresas</h1>
         <button class="btn btn-primary" id="btn-nova-empresa">＋ Nova empresa</button>
@@ -39,40 +58,34 @@
       <div class="view-head">
         <h1 id="empresa-nome">—</h1>
         <div class="head-actions">
-          <button class="btn btn-ghost" id="btn-instrucoes">Instruções</button>
           <button class="btn btn-ghost" id="btn-renomear">Renomear</button>
           <button class="btn btn-ghost btn-danger-ghost" id="btn-remover-empresa">Remover</button>
         </div>
       </div>
 
       <div class="cards-2">
-        <!-- Planilhas -->
+        <!-- Modelos (status do banco) -->
         <div class="card">
           <div class="card-head">
-            <h2>📄 Planilhas</h2>
-            <button class="btn btn-sm" id="btn-add-planilha">＋ Adicionar</button>
+            <h2>📦 Modelos</h2>
+            <button class="btn btn-sm" id="btn-importar">⭱ Importar planilha</button>
           </div>
-          <ul class="lista-tabelas" id="lista-tabelas"></ul>
-          <p class="hint" id="tabelas-vazio" hidden>
-            Nenhuma planilha .xlsx. Adicione uma para executar o robô.
+          <div class="resumo-modelos" id="resumo-modelos"></div>
+          <ul class="lista-modelos" id="lista-modelos"></ul>
+          <p class="hint" id="modelos-vazio" hidden>
+            Nenhum modelo ainda. Importe uma planilha .xlsx para começar.
           </p>
-          <button class="link" id="btn-abrir-pasta">Abrir pasta da empresa ↗</button>
         </div>
 
-        <!-- Conta Amazon -->
+        <!-- Conta Amazon (local nesta máquina) -->
         <div class="card">
           <div class="card-head"><h2>🔑 Conta Amazon</h2></div>
-          <p class="status-linha">
-            Login: <span id="status-login" class="tag">—</span>
-          </p>
-
+          <p class="status-linha">Login: <span id="status-login" class="tag">—</span></p>
           <div class="cofre">
-            <label class="campo-mini">
-              <span>E-mail da conta</span>
+            <label class="campo-mini"><span>E-mail da conta</span>
               <input type="email" id="cred-email" placeholder="email@empresa.com" autocomplete="off" />
             </label>
-            <label class="campo-mini">
-              <span>Senha <small id="cred-senha-hint"></small></span>
+            <label class="campo-mini"><span>Senha <small id="cred-senha-hint"></small></span>
               <input type="password" id="cred-senha" placeholder="••••••••" autocomplete="new-password" />
             </label>
             <div class="cofre-acoes">
@@ -80,10 +93,9 @@
               <button class="btn btn-sm btn-ghost" id="btn-remover-cred" hidden>Remover</button>
             </div>
           </div>
-
           <p class="hint">
-            O cofre guarda email e senha <b>cifrados neste computador</b>. No login, o robô
-            preenche pra você — você confere, clica em entrar e digita o código de verificação.
+            Login e cofre são <b>deste computador</b>. No login, o robô preenche;
+            você confere, entra e digita o código de verificação.
           </p>
           <button class="btn btn-block btn-primary" id="btn-login">Fazer login na Amazon</button>
         </div>
@@ -93,22 +105,13 @@
       <div class="card card-exec">
         <div class="card-head"><h2>▶ Executar</h2></div>
         <div class="exec-controls">
-          <label class="campo">
-            <span>Planilha</span>
-            <select id="select-planilha"></select>
-          </label>
-
           <div class="modo-toggle" id="modo-toggle">
-            <button class="modo-opt is-on" data-modo="simular">
-              <b>Simular</b><small>não salva nada</small>
-            </button>
-            <button class="modo-opt" data-modo="salvar">
-              <b>Salvar na Amazon</b><small>cria de verdade</small>
-            </button>
+            <button class="modo-opt is-on" data-modo="simular"><b>Simular</b><small>não salva nada</small></button>
+            <button class="modo-opt" data-modo="salvar"><b>Salvar na Amazon</b><small>cria/atualiza de verdade</small></button>
           </div>
-
-          <button class="btn btn-primary btn-grande" id="btn-executar" disabled>Executar</button>
+          <button class="btn btn-primary btn-grande" id="btn-executar" disabled>Executar pendentes</button>
         </div>
+        <p class="hint" id="exec-hint"></p>
       </div>
     </section>
 
@@ -118,16 +121,12 @@
         <h1 id="exec-titulo">Executando…</h1>
         <span id="exec-modo-badge" class="pill"></span>
       </div>
-
       <div class="progress-wrap">
         <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
         <span class="progress-label" id="progress-label">—</span>
       </div>
-
       <ul class="lista-produtos" id="lista-produtos"></ul>
-
       <div class="log" id="log"></div>
-
       <div class="exec-rodape">
         <button class="btn btn-danger" id="btn-cancelar">Cancelar</button>
         <button class="btn btn-primary" id="btn-concluir" hidden>Voltar</button>
@@ -135,7 +134,6 @@
     </section>
   </main>
 
-  <!-- ░░░ MODAL genérico (nova empresa / renomear / confirmações) ░░░ -->
   <div class="modal-overlay" id="modal" hidden>
     <div class="modal">
       <h3 id="modal-titulo">Título</h3>
@@ -149,7 +147,6 @@
   </div>
 
   <div class="toast" id="toast" hidden></div>
-
   <script src="app.js"></script>
 </body>
 </html>

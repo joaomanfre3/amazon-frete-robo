@@ -1,18 +1,17 @@
-// Lógica da janela. Fala com o main via window.api (exposto pelo preload).
+// Lógica da janela (modo cérebro). Fala com o main via window.api.
 
 const $ = (sel) => document.querySelector(sel);
-const $$ = (sel) => [...document.querySelectorAll(sel)];
 
 const estado = {
-  empresa: null,      // nome da empresa aberta
-  tabelas: [],        // planilhas da empresa aberta
-  modoSalvar: false,  // false = simular
-  desinscrever: null, // remove o listener de eventos do job
+  operador: null,                 // { id, email, nome }
+  empresa: null,                  // { id, slug, nome }
+  modoSalvar: false,
+  pendentes: 0,
+  desinscrever: null,
 };
 
-// ─── Navegação entre telas ──────────────────────────────────────────────────
 function mostrarView(nome) {
-  $$('.view').forEach((v) => { v.hidden = v.dataset.view !== nome; });
+  document.querySelectorAll('.view').forEach((v) => { v.hidden = v.dataset.view !== nome; });
 }
 
 // ─── Toast ──────────────────────────────────────────────────────────────────
@@ -23,28 +22,26 @@ function toast(msg, tipo = '') {
   el.className = 'toast' + (tipo ? ` t-${tipo}` : '');
   el.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { el.hidden = true; }, 3000);
+  toastTimer = setTimeout(() => { el.hidden = true; }, 3200);
 }
 
-// ─── Modal (prompt / confirm) ─────────────────────────────────────────────────
+// ─── Modal ────────────────────────────────────────────────────────────────────
 function modal({ titulo, texto = '', input = false, valorInput = '', confirmar = 'Confirmar', perigo = false }) {
   return new Promise((resolve) => {
     $('#modal-titulo').textContent = titulo;
     $('#modal-texto').textContent = texto;
     $('#modal-texto').hidden = !texto;
     const inp = $('#modal-input');
-    inp.hidden = !input;
-    inp.value = valorInput;
+    inp.hidden = !input; inp.value = valorInput;
     const btnOk = $('#modal-confirmar');
     btnOk.textContent = confirmar;
     btnOk.className = 'btn ' + (perigo ? 'btn-danger' : 'btn-primary');
     $('#modal').hidden = false;
     if (input) setTimeout(() => inp.focus(), 50);
-
-    const fechar = (valor) => {
+    const fechar = (v) => {
       $('#modal').hidden = true;
       btnOk.onclick = null; $('#modal-cancelar').onclick = null; inp.onkeydown = null;
-      resolve(valor);
+      resolve(v);
     };
     btnOk.onclick = () => fechar(input ? inp.value.trim() : true);
     $('#modal-cancelar').onclick = () => fechar(null);
@@ -52,34 +49,87 @@ function modal({ titulo, texto = '', input = false, valorInput = '', confirmar =
   });
 }
 
-// ─── Tela 1: lista de empresas ────────────────────────────────────────────────
+// ─── Util ──────────────────────────────────────────────────────────────────
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
+}
+function descreveIdade(h) {
+  if (h == null) return '';
+  if (h < 1) return 'há poucos minutos';
+  if (h < 24) return `há ${Math.round(h)}h`;
+  return `há ${Math.round(h / 24)} dia(s)`;
+}
+function classificarLogin(login, comIdade = false) {
+  if (!login?.logado) return { classe: 'tag-warn', texto: comIdade ? 'ainda não' : 'sem login' };
+  const idade = comIdade ? ` (${descreveIdade(login.idadeHoras)})` : '';
+  if (login.expirado) return { classe: 'tag-warn', texto: `${comIdade ? 'pode ter expirado' : 'login expirado'}${idade}` };
+  return { classe: 'tag-ok', texto: `${comIdade ? 'logado ✓' : 'logado'}${idade}` };
+}
+const ROTULO_STATUS = { pendente: 'pendente', criando: 'em andamento', criado: 'criado', linkado: 'linkado', erro: 'erro' };
+
+// ─── Login do operador ────────────────────────────────────────────────────────
+async function iniciar() {
+  const db = await window.api.dbStatus();
+  if (!db.ok) {
+    const aviso = $('#db-aviso');
+    aviso.textContent = `Cérebro indisponível: ${db.erro || 'sem conexão'}.`;
+    aviso.hidden = false;
+  }
+  const op = await window.api.authAtual();
+  if (op) { estado.operador = op; entrarApp(); }
+  else mostrarView('login');
+}
+
+function entrarApp() {
+  $('#op-nome').textContent = estado.operador.nome;
+  $('#op-nome').hidden = false;
+  $('#btn-logout').hidden = false;
+  renderEmpresas();
+}
+
+$('#btn-entrar').onclick = async () => {
+  const email = $('#login-email').value.trim();
+  const senha = $('#login-senha').value;
+  if (!email || !senha) { toast('Preencha e-mail e senha', 'err'); return; }
+  const res = await window.api.authLogin(email, senha);
+  if (!res.ok) { toast(res.erro, 'err'); return; }
+  estado.operador = res.operador;
+  entrarApp();
+};
+$('#login-senha').onkeydown = (e) => { if (e.key === 'Enter') $('#btn-entrar').click(); };
+
+$('#btn-logout').onclick = async () => {
+  await window.api.authLogout();
+  estado.operador = null;
+  $('#op-nome').hidden = true; $('#btn-logout').hidden = true;
+  mostrarView('login');
+};
+
+// ─── Empresas (do cérebro) ────────────────────────────────────────────────────
 async function renderEmpresas() {
-  const empresas = await window.api.listarEmpresas();
+  const empresas = await window.api.listarEmpresasDb();
   const grid = $('#grid-empresas');
   grid.innerHTML = '';
-
   for (const emp of empresas) {
-    const nT = emp.tabelas.length;
-    const tabTag = nT === 0
-      ? `<span class="tag tag-off">sem planilha</span>`
-      : `<span class="tag tag-ok">${nT} planilha${nT > 1 ? 's' : ''}</span>`;
+    const tot = emp.n_modelos;
+    const modeloTag = tot === 0
+      ? `<span class="tag tag-off">sem modelos</span>`
+      : `<span class="tag ${emp.n_pendentes > 0 ? 'tag-warn' : 'tag-ok'}">${emp.n_prontos}/${tot} prontos</span>`;
     const lt = classificarLogin(emp.login);
-    const loginTag = `<span class="tag ${lt.classe}">${lt.texto}</span>`;
-
     const card = document.createElement('div');
     card.className = 'empresa-card';
     card.innerHTML = `<div class="ec-nome">${escapeHtml(emp.nome)}</div>
-      <div class="ec-badges">${tabTag}${loginTag}</div>`;
-    card.onclick = () => abrirEmpresa(emp.nome);
+      <div class="ec-badges">${modeloTag}<span class="tag ${lt.classe}">${lt.texto}</span></div>`;
+    card.onclick = () => abrirEmpresa(emp);
     grid.appendChild(card);
   }
-
   const novo = document.createElement('div');
   novo.className = 'empresa-card card-novo';
   novo.textContent = '＋ Nova empresa';
   novo.onclick = novaEmpresa;
   grid.appendChild(novo);
-
   $('#empresas-vazio').hidden = empresas.length > 0;
   mostrarView('empresas');
 }
@@ -87,207 +137,164 @@ async function renderEmpresas() {
 async function novaEmpresa() {
   const nome = await modal({
     titulo: 'Nova empresa',
-    texto: 'Digite o nome da empresa. Será criada uma pasta para os dados dela.',
+    texto: 'Nome da empresa (fica compartilhada com toda a equipe).',
     input: true, confirmar: 'Criar',
   });
   if (!nome) return;
-  const res = await window.api.criarEmpresa(nome);
+  const res = await window.api.criarEmpresaDb(nome);
   if (!res.ok) { toast(res.erro, 'err'); return; }
-  toast(`Empresa "${res.slug}" criada`, 'ok');
-  await abrirEmpresa(res.slug);
+  toast(`Empresa "${res.empresa.nome}" criada`, 'ok');
+  await abrirEmpresa(res.empresa);
 }
 
-// ─── Tela 2: detalhe da empresa ──────────────────────────────────────────────
-async function abrirEmpresa(nome) {
-  estado.empresa = nome;
-  $('#empresa-nome').textContent = nome;
-
-  const [tabelas, instr] = await Promise.all([
-    window.api.listarTabelas(nome),
-    window.api.lerInstrucoes(nome),
-  ]);
-  estado.tabelas = tabelas;
-  estado._instrucoes = instr;
-
-  renderTabelas();
-  await renderStatusLogin(nome);
-  await carregarCofre(nome);
+// ─── Detalhe da empresa ───────────────────────────────────────────────────────
+async function abrirEmpresa(emp) {
+  estado.empresa = { id: emp.id, slug: emp.slug, nome: emp.nome };
+  $('#empresa-nome').textContent = emp.nome;
+  await renderModelos();
+  await renderStatusLogin(emp.slug);
+  await carregarCofre(emp.slug);
   mostrarView('empresa');
 }
 
-function descreveIdade(h) {
-  if (h == null) return '';
-  if (h < 1) return 'há poucos minutos';
-  if (h < 24) return `há ${Math.round(h)}h`;
-  return `há ${Math.round(h / 24)} dia(s)`;
+async function renderModelos() {
+  const modelos = await window.api.modelosDb(estado.empresa.id);
+  const ul = $('#lista-modelos');
+  ul.innerHTML = '';
+  let prontos = 0, pend = 0, erro = 0;
+  for (const m of modelos) {
+    if (m.status === 'criado' || m.status === 'linkado') prontos++;
+    else if (m.status === 'pendente') pend++;
+    else if (m.status === 'erro') erro++;
+    const icon = (m.status === 'criado' || m.status === 'linkado') ? '✓'
+      : m.status === 'erro' ? '✘' : m.status === 'criando' ? '⏳' : '○';
+    const cls = (m.status === 'criado' || m.status === 'linkado') ? 'is-ok'
+      : m.status === 'erro' ? 'is-err' : m.status === 'criando' ? 'is-run' : '';
+    const li = document.createElement('li');
+    li.className = 'prod ' + cls;
+    li.innerHTML = `<span class="prod-icon">${icon}</span>
+      <span class="prod-nome">${escapeHtml(m.produto_nome)}</span>
+      <span class="prod-info">${ROTULO_STATUS[m.status] || m.status}${m.erro_msg ? ' — ' + escapeHtml(m.erro_msg) : ''}</span>`;
+    ul.appendChild(li);
+  }
+  $('#modelos-vazio').hidden = modelos.length > 0;
+  $('#resumo-modelos').innerHTML = modelos.length
+    ? `<span class="tag tag-ok">${prontos} prontos</span> <span class="tag ${pend ? 'tag-warn' : ''}">${pend} pendentes</span>${erro ? ` <span class="tag tag-off">${erro} com erro</span>` : ''}`
+    : '';
+  estado.pendentes = pend;
+  $('#btn-executar').disabled = pend === 0;
+  $('#exec-hint').textContent = pend > 0
+    ? `${pend} modelo(s) pendente(s) serão processados.`
+    : 'Nada pendente. Importe ou atualize uma planilha.';
 }
 
-// Decisão única "estado de login → {classe, texto}". comIdade detalha p/ a tela de empresa.
-function classificarLogin(login, comIdade = false) {
-  if (!login?.logado) return { classe: 'tag-warn', texto: comIdade ? 'ainda não' : 'sem login' };
-  const idade = comIdade ? ` (${descreveIdade(login.idadeHoras)})` : '';
-  if (login.expirado) return { classe: 'tag-warn', texto: `${comIdade ? 'pode ter expirado' : 'login expirado'}${idade}` };
-  return { classe: 'tag-ok', texto: `${comIdade ? 'logado ✓' : 'logado'}${idade}` };
-}
-
-async function renderStatusLogin(nome) {
-  const login = await window.api.statusLogin(nome);
+async function renderStatusLogin(slug) {
+  const login = await window.api.statusLogin(slug);
   const lt = classificarLogin(login, true);
   $('#status-login').textContent = lt.texto;
   $('#status-login').className = `tag ${lt.classe}`;
 }
 
-async function carregarCofre(nome) {
-  const c = await window.api.obterCredencial(nome);
+async function carregarCofre(slug) {
+  const c = await window.api.obterCredencial(slug);
   $('#cred-email').value = c.email || '';
   $('#cred-senha').value = '';
   $('#cred-senha-hint').textContent = c.temCredencial ? '(salva — deixe em branco p/ manter)' : '';
   $('#btn-remover-cred').hidden = !c.temCredencial;
 }
 
-function renderTabelas() {
-  const ul = $('#lista-tabelas');
-  ul.innerHTML = '';
-  for (const t of estado.tabelas) {
-    const li = document.createElement('li');
-    li.innerHTML = `<span class="tb-nome">${escapeHtml(t)}</span>
-      <button class="tb-del" title="Remover">✕</button>`;
-    li.querySelector('.tb-del').onclick = () => removerPlanilha(t);
-    ul.appendChild(li);
-  }
-  $('#tabelas-vazio').hidden = estado.tabelas.length > 0;
-
-  // Seletor de planilha + estado do botão executar
-  const sel = $('#select-planilha');
-  sel.innerHTML = '';
-  for (const t of estado.tabelas) {
-    const opt = document.createElement('option');
-    opt.value = t; opt.textContent = t;
-    sel.appendChild(opt);
-  }
-  $('#btn-executar').disabled = estado.tabelas.length === 0;
-}
-
-async function removerPlanilha(arquivo) {
-  const ok = await modal({
-    titulo: 'Remover planilha',
-    texto: `Remover "${arquivo}" da pasta da empresa? (apaga só o arquivo)`,
-    confirmar: 'Remover', perigo: true,
-  });
-  if (!ok) return;
-  const res = await window.api.removerPlanilha(estado.empresa, arquivo);
-  if (!res.ok) { toast(res.erro, 'err'); return; }
-  estado.tabelas = await window.api.listarTabelas(estado.empresa);
-  renderTabelas();
-  toast('Planilha removida', 'ok');
-}
-
 // ─── Ações da empresa ─────────────────────────────────────────────────────────
-$('#btn-add-planilha').onclick = async () => {
-  const res = await window.api.adicionarPlanilha(estado.empresa);
+$('#btn-importar').onclick = async () => {
+  const res = await window.api.importarPlanilhaDb({ empresaId: estado.empresa.id, slug: estado.empresa.slug });
   if (res.cancelado) return;
   if (!res.ok) { toast(res.erro, 'err'); return; }
-  estado.tabelas = await window.api.listarTabelas(estado.empresa);
-  renderTabelas();
-  toast(`"${res.arquivo}" adicionada`, 'ok');
+  const r = res.resumo;
+  toast(`${r.novos} novos · ${r.atualizados} p/ atualizar · ${r.inalterados} iguais`, 'ok');
+  await renderModelos();
 };
 
-$('#btn-abrir-pasta').onclick = () => window.api.abrirPasta(estado.empresa);
-
-// Cofre de credenciais
 $('#btn-salvar-cred').onclick = async () => {
-  const email = $('#cred-email').value.trim();
-  const senha = $('#cred-senha').value;
-  const res = await window.api.salvarCredencial(estado.empresa, email, senha);
+  const res = await window.api.salvarCredencial(estado.empresa.slug, $('#cred-email').value.trim(), $('#cred-senha').value);
   if (!res.ok) { toast(res.erro, 'err'); return; }
   toast('Credenciais salvas no cofre', 'ok');
-  await carregarCofre(estado.empresa);
+  await carregarCofre(estado.empresa.slug);
 };
 $('#btn-remover-cred').onclick = async () => {
   const ok = await modal({ titulo: 'Remover credenciais', texto: 'Apagar email e senha do cofre desta empresa?', confirmar: 'Remover', perigo: true });
   if (!ok) return;
-  await window.api.removerCredencial(estado.empresa);
+  await window.api.removerCredencial(estado.empresa.slug);
   toast('Credenciais removidas', 'ok');
-  await carregarCofre(estado.empresa);
-};
-
-$('#btn-instrucoes').onclick = () => {
-  modal({ titulo: `Instruções — ${estado.empresa}`, texto: estado._instrucoes || 'Sem instruções.', confirmar: 'Fechar' });
+  await carregarCofre(estado.empresa.slug);
 };
 
 $('#btn-renomear').onclick = async () => {
-  const novo = await modal({
-    titulo: 'Renomear empresa', input: true, valorInput: estado.empresa, confirmar: 'Renomear',
-  });
-  if (!novo || novo === estado.empresa) return;
-  const res = await window.api.renomearEmpresa(estado.empresa, novo);
+  const novo = await modal({ titulo: 'Renomear empresa', input: true, valorInput: estado.empresa.nome, confirmar: 'Renomear' });
+  if (!novo || novo === estado.empresa.nome) return;
+  const res = await window.api.renomearEmpresaDb(estado.empresa.id, novo);
   if (!res.ok) { toast(res.erro, 'err'); return; }
+  estado.empresa.nome = novo; estado.empresa.slug = res.slug;
+  $('#empresa-nome').textContent = novo;
   toast('Empresa renomeada', 'ok');
-  await abrirEmpresa(res.slug);
 };
 
 $('#btn-remover-empresa').onclick = async () => {
   const ok = await modal({
     titulo: 'Remover empresa',
-    texto: `Remover "${estado.empresa}" e TODOS os dados locais (planilhas e login)? Isso não pode ser desfeito.`,
-    confirmar: 'Remover tudo', perigo: true,
+    texto: `Remover "${estado.empresa.nome}" e TODOS os seus modelos do sistema? (afeta toda a equipe)`,
+    confirmar: 'Remover', perigo: true,
   });
   if (!ok) return;
-  const res = await window.api.removerEmpresa(estado.empresa);
+  const res = await window.api.removerEmpresaDb(estado.empresa.id);
   if (!res.ok) { toast(res.erro, 'err'); return; }
   toast('Empresa removida', 'ok');
   renderEmpresas();
 };
 
-// Toggle simular / salvar
 $('#modo-toggle').onclick = (e) => {
   const opt = e.target.closest('.modo-opt');
   if (!opt) return;
   estado.modoSalvar = opt.dataset.modo === 'salvar';
-  $$('.modo-opt').forEach((o) => o.classList.toggle('is-on', o === opt));
+  document.querySelectorAll('.modo-opt').forEach((o) => o.classList.toggle('is-on', o === opt));
 };
 
-// ─── Login ─────────────────────────────────────────────────────────────────
+// ─── Login na Amazon (local) ──────────────────────────────────────────────────
 $('#btn-login').onclick = async () => {
-  iniciarTelaJob(`Login — ${estado.empresa}`, null);
+  iniciarTelaJob(`Login — ${estado.empresa.nome}`, null);
   registrarEventos();
-  const res = await window.api.login({ nomeEmpresa: estado.empresa });
+  const res = await window.api.login({ nomeEmpresa: estado.empresa.slug });
   if (!res.ok) { toast(res.erro, 'err'); voltarDoJob(); }
 };
 
-// ─── Executar ────────────────────────────────────────────────────────────────
+// ─── Executar ─────────────────────────────────────────────────────────────────
 $('#btn-executar').onclick = async () => {
-  const arquivoTabela = $('#select-planilha').value;
   const salvar = estado.modoSalvar;
-
   if (salvar) {
     const ok = await modal({
       titulo: 'Confirmar execução real',
-      texto: `Os modelos de frete serão CRIADOS de verdade na Amazon Seller Central de "${estado.empresa}". Continuar?`,
-      confirmar: 'Sim, criar na Amazon', perigo: true,
+      texto: `Os modelos pendentes de "${estado.empresa.nome}" serão criados/atualizados na Amazon Seller Central. Continuar?`,
+      confirmar: 'Sim, gravar na Amazon', perigo: true,
     });
     if (!ok) return;
   }
-
-  iniciarTelaJob(`Executando — ${estado.empresa}`, salvar);
+  iniciarTelaJob(`Executando — ${estado.empresa.nome}`, salvar);
   registrarEventos();
-  const res = await window.api.executar({ nomeEmpresa: estado.empresa, salvar, arquivoTabela });
-  if (!res.ok) { toast(res.erro, 'err'); voltarDoJob(); }
+  const res = await window.api.executarDb({ empresaId: estado.empresa.id, slug: estado.empresa.slug, salvar });
+  if (res.vazio) { logLinha('Nenhum modelo pendente para processar.', 'l-warn'); }
+  if (!res.ok) { toast(res.erro, 'err'); logLinha(`Erro: ${res.erro}`, 'l-err'); }
 };
 
-// ─── Tela 3: execução ao vivo ──────────────────────────────────────────────
+// ─── Execução ao vivo ─────────────────────────────────────────────────────────
 function iniciarTelaJob(titulo, salvar) {
   $('#exec-titulo').textContent = titulo;
   const badge = $('#exec-modo-badge');
   if (salvar === null) { badge.textContent = 'Login'; badge.className = 'pill pill-sim'; }
   else if (salvar) { badge.textContent = 'MODO REAL'; badge.className = 'pill pill-real'; }
   else { badge.textContent = 'Simulação'; badge.className = 'pill pill-sim'; }
-
   $('#lista-produtos').innerHTML = '';
   $('#log').innerHTML = '';
   $('#progress-fill').style.width = '0%';
   $('#progress-label').textContent = '—';
-  $('#btn-cancelar').hidden = false;
+  $('#btn-cancelar').hidden = false; $('#btn-cancelar').disabled = false;
   $('#btn-concluir').hidden = true;
   $('#badge-status').textContent = 'Trabalhando…';
   $('#badge-status').className = 'pill pill-run';
@@ -312,7 +319,6 @@ function setProgresso(feitos, total) {
 function registrarEventos() {
   if (estado.desinscrever) estado.desinscrever();
   let total = 0;
-
   estado.desinscrever = window.api.aoEventoDeJob((ev) => {
     switch (ev.type) {
       case 'plano': {
@@ -324,31 +330,21 @@ function registrarEventos() {
           li.className = 'prod'; li.id = `prod-${i}`;
           li.innerHTML = `<span class="prod-icon">○</span>
             <span class="prod-nome">${escapeHtml(p.nome)}</span>
-            <span class="prod-info">${p.regioes} regiões</span>`;
+            <span class="prod-info">${p.acao === 'editar' ? 'atualizar' : 'criar'} · ${p.regioes} regiões</span>`;
           ul.appendChild(li);
         });
         logLinha(`Plano: ${total} modelo(s) — ${ev.salvar ? 'MODO REAL' : 'simulação'}`, 'l-info');
         break;
       }
-      case 'browser-abrindo':
-        logLinha('Abrindo o navegador…', 'l-info');
-        break;
-      case 'login-abrindo':
-        logLinha('Abrindo o navegador na Amazon. Faça login e FECHE a janela quando terminar.', 'l-info');
-        break;
-      case 'login-preenchido':
-        logLinha('Email e senha preenchidos. Confira, clique em ENTRAR e digite o código de verificação. Depois FECHE a janela.', 'l-info');
-        break;
-      case 'login-salvo':
-        logLinha('✅ Login confirmado e salvo!', 'l-ok');
-        break;
-      case 'login-nao-concluido':
-        logLinha('⚠ A janela foi fechada antes de concluir o login. Tente de novo.', 'l-warn');
-        break;
+      case 'browser-abrindo': logLinha('Abrindo o navegador…', 'l-info'); break;
+      case 'login-abrindo': logLinha('Abrindo o navegador na Amazon. Faça login e FECHE a janela quando terminar.', 'l-info'); break;
+      case 'login-preenchido': logLinha('Email e senha preenchidos. Confira, clique em ENTRAR e digite o código. Depois FECHE a janela.', 'l-info'); break;
+      case 'login-salvo': logLinha('✅ Login confirmado e salvo!', 'l-ok'); break;
+      case 'login-nao-concluido': logLinha('⚠ Janela fechada antes de concluir o login. Tente de novo.', 'l-warn'); break;
       case 'produto-inicio': {
         const li = $(`#prod-${ev.index}`);
         if (li) { li.className = 'prod is-run'; li.querySelector('.prod-icon').innerHTML = '<span class="spin">⏳</span>'; }
-        logLinha(`▶ ${ev.nome}…`);
+        logLinha(`▶ ${ev.acao === 'editar' ? 'Atualizando' : 'Criando'} ${ev.nome}…`);
         break;
       }
       case 'produto-fim': {
@@ -371,19 +367,14 @@ function registrarEventos() {
         setProgresso(ev.index + 1, total);
         break;
       }
-      case 'erro-fatal':
-        logLinha(`ERRO: ${ev.msg}`, 'l-err');
-        toast(ev.msg, 'err');
-        break;
+      case 'erro-fatal': logLinha(`ERRO: ${ev.msg}`, 'l-err'); toast(ev.msg, 'err'); break;
       case 'done': {
         const r = ev.resumo;
         if (r.cancelado) logLinha('Cancelado pelo usuário.', 'l-warn');
         else logLinha(`✅ Concluído: ${r.ok} ok, ${r.comFalha} com falha.`, 'l-ok');
         break;
       }
-      case 'encerrado':
-        finalizarJob();
-        break;
+      case 'encerrado': finalizarJob(); break;
     }
   });
 }
@@ -404,21 +395,12 @@ function voltarDoJob() {
 
 $('#btn-cancelar').onclick = async () => {
   await window.api.cancelar();
-  logLinha('Cancelando… (aguarde o produto atual terminar)', 'l-warn');
+  logLinha('Cancelando… (aguarde o item atual terminar)', 'l-warn');
   $('#btn-cancelar').disabled = true;
 };
-$('#btn-concluir').onclick = () => { $('#btn-cancelar').disabled = false; voltarDoJob(); };
-
-// ─── Navegação geral ──────────────────────────────────────────────────────────
+$('#btn-concluir').onclick = voltarDoJob;
 $('#btn-voltar-lista').onclick = renderEmpresas;
 $('#btn-nova-empresa').onclick = novaEmpresa;
 
-// ─── Util ──────────────────────────────────────────────────────────────────
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) => (
-    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
-  ));
-}
-
 // Início
-renderEmpresas();
+iniciar();

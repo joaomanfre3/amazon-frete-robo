@@ -107,6 +107,24 @@ export async function pegarTarefas(empresaId, operadorId) {
   return tarefas;
 }
 
+/** Tarefas pendentes SEM claim (para simulação/preview — não bloqueia ninguém). */
+export async function tarefasPendentes(empresaId) {
+  const modelos = await query(
+    "select id, produto_id, amazon_template_id from modelo_frete where empresa_id = $1 and status = 'pendente' order by produto_id",
+    [empresaId],
+  );
+  const tarefas = [];
+  for (const mf of modelos) {
+    const prod = await queryOne('select nome from produto where id = $1', [mf.produto_id]);
+    const regioes = await query(
+      'select regiao, frete, prazo_dias as prazo from regiao_frete where produto_id = $1',
+      [mf.produto_id],
+    );
+    tarefas.push({ modeloId: mf.id, amazonTemplateId: mf.amazon_template_id, nome: prod.nome, regioes });
+  }
+  return tarefas;
+}
+
 /** Reporta o resultado de um modelo após rodar o Playwright. */
 export async function reportarResultado(modeloId, { ok, amazonTemplateId, erro }) {
   if (ok) {

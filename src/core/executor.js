@@ -15,7 +15,7 @@
 import { abrirNavegador, pausa } from '../browser/connect.js';
 import { caminhoProfile, caminhoTabela, tabelaExiste, registrarLogin } from '../lib/empresa.js';
 import { lerTabela } from '../lib/excel.js';
-import { criarModelo } from '../flows/amazonModelo.js';
+import { criarModelo, editarModelo } from '../flows/amazonModelo.js';
 
 // Está numa página autenticada do Seller Central? (não na tela de login/signin)
 function estaLogado(url) {
@@ -152,6 +152,55 @@ export async function executarModelos({ nomeEmpresa, salvar, arquivoTabela, onEv
  * @param {string}   opts.urlAmazon
  * @param {Function} [opts.onEvent]
  */
+/**
+ * Modo CÉREBRO: executa tarefas vindas do banco (já com claim).
+ * Cada tarefa: { modeloId, amazonTemplateId, nome, regioes }.
+ * Decide CRIAR (sem template_id) ou EDITAR (com template_id) — sem delete+recria.
+ * Emite os mesmos eventos de produto, sempre com `modeloId` pra o chamador
+ * reportar o resultado ao banco.
+ * @param {string} slug  empresa (indexa o perfil de Chrome local)
+ */
+export async function executarTarefas({ slug, tarefas, salvar, onEvent = () => {}, shouldCancel = () => false }) {
+  onEvent({
+    type: 'plano',
+    salvar,
+    produtos: tarefas.map((t) => ({ nome: t.nome, regioes: t.regioes.length, acao: t.amazonTemplateId ? 'editar' : 'criar' })),
+  });
+
+  onEvent({ type: 'browser-abrindo' });
+  const ctx = await abrirNavegador(caminhoProfile(slug));
+  const resumo = { total: tarefas.length, ok: 0, comFalha: 0, salvo: salvar, cancelado: false };
+
+  try {
+    for (let i = 0; i < tarefas.length; i++) {
+      if (shouldCancel()) { resumo.cancelado = true; break; }
+      const t = tarefas[i];
+      const acao = t.amazonTemplateId ? 'editar' : 'criar';
+      onEvent({ type: 'produto-inicio', nome: t.nome, index: i, total: tarefas.length, acao });
+
+      try {
+        const res = t.amazonTemplateId
+          ? await editarModelo(ctx, { amazonTemplateId: t.amazonTemplateId, nome: t.nome, regioes: t.regioes, salvar })
+          : await criarModelo(ctx, { nome: t.nome, regioes: t.regioes, salvar });
+        resumo.ok++;
+        onEvent({
+          type: 'produto-fim', nome: t.nome, index: i, modeloId: t.modeloId,
+          ok: res.ok, totalRegioes: res.total, faltou: res.faltou || [],
+          amazonTemplateId: res.amazonTemplateId ?? t.amazonTemplateId ?? null, salvo: salvar, acao,
+        });
+      } catch (e) {
+        resumo.comFalha++;
+        onEvent({ type: 'produto-erro', nome: t.nome, index: i, modeloId: t.modeloId, msg: e.message });
+      }
+    }
+  } finally {
+    if (salvar) await ctx.close().catch(() => {});
+  }
+
+  onEvent({ type: 'done', salvo: salvar, resumo });
+  return resumo;
+}
+
 export async function abrirParaLogin({ nomeEmpresa, urlAmazon, credenciais = null, onEvent = () => {} }) {
   onEvent({ type: 'login-abrindo', nome: nomeEmpresa });
   const ctx = await abrirNavegador(caminhoProfile(nomeEmpresa));

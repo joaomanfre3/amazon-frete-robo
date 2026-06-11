@@ -20,7 +20,20 @@ contextBridge.exposeInMainWorld('api', {
   obterCredencial: (nome) => ipcRenderer.invoke('credencial:obter', nome),
   removerCredencial: (nome) => ipcRenderer.invoke('credencial:remover', nome),
 
-  // Jobs (execução / login no worker isolado)
+  // ─── Cérebro central (Neon): auth + empresas + modelos ───
+  dbStatus: () => ipcRenderer.invoke('db:status'),
+  authLogin: (email, senha) => ipcRenderer.invoke('auth:login', email, senha),
+  authAtual: () => ipcRenderer.invoke('auth:atual'),
+  authLogout: () => ipcRenderer.invoke('auth:logout'),
+  listarEmpresasDb: () => ipcRenderer.invoke('empresasDb:listar'),
+  criarEmpresaDb: (nome) => ipcRenderer.invoke('empresaDb:criar', nome),
+  renomearEmpresaDb: (id, nome) => ipcRenderer.invoke('empresaDb:renomear', id, nome),
+  removerEmpresaDb: (id) => ipcRenderer.invoke('empresaDb:remover', id),
+  modelosDb: (id) => ipcRenderer.invoke('empresaDb:modelos', id),
+  importarPlanilhaDb: (opts) => ipcRenderer.invoke('empresaDb:importar', opts),
+  executarDb: (opts) => ipcRenderer.invoke('jobDb:executar', opts),
+
+  // Jobs locais (execução / login no worker isolado)
   executar: (opts) => ipcRenderer.invoke('job:executar', opts),
   login: (opts) => ipcRenderer.invoke('job:login', opts),
   cancelar: () => ipcRenderer.invoke('job:cancelar'),
