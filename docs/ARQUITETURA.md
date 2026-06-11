@@ -18,17 +18,35 @@
          └────────────────────┼───────────────────────────────┘
                               ▼
                    ┌────────────────────────┐
-                   │   CÉREBRO (Supabase)    │
-                   │  Auth · Postgres ·      │
-                   │  Realtime · Storage     │
+                   │   CÉREBRO (Neon/PG17)   │
+                   │  projeto frete-amazon-  │
+                   │  robo · auth própria    │
                    │  = fonte da verdade     │
                    └────────────────────────┘
 ```
 
-- **Cérebro (Supabase)** é a **fonte da verdade**: operadores, empresas, produtos,
-  fretes e o **estado de cada modelo** na Amazon. Realtime → todos veem na hora.
+- **Cérebro (Neon Postgres)** é a **fonte da verdade**: operadores, empresas, produtos,
+  fretes e o **estado de cada modelo** na Amazon.
 - **App local (Electron)** roda o **Playwright em cada PC** (precisa do Chrome logado
   daquela máquina). Sincroniza do cérebro, executa, e **reporta o estado de volta**.
+
+### Por que Neon (e não Supabase)
+Restrição do dono: **tudo gratuito** e **provisionável por mim** (tenho ferramenta do
+Neon; do Supabase dependeria do dashboard). Neon free é suficiente (texto + dados de
+Excel = poucos MB). Custo: não há Auth/Realtime/Storage prontos — resolvidos abaixo.
+
+### Sincronização SEM polling contínuo (lição do HubZinn)
+No HubZinn, "tempo real" por consulta contínua **estourou as compute-hours** do Neon
+(cota compartilhada pela org). Aqui: **sincroniza on-demand** — ao abrir uma empresa,
+ao agir, e por botão "atualizar"; polling leve **só durante uma execução ativa**. O
+compute suspende quando ninguém usa → fica grátis. "Ver uns aos outros" = ao
+abrir/atualizar (diferença de segundos, não ao vivo).
+
+### Auth e segurança do client distribuído
+- **Auth própria**: tabela `operador` (email + `senha_hash` bcrypt). Login no app.
+- App é **interno** (5 PCs de funcionários). MVP conecta via role de banco restrito;
+  a connection string vai no `.env` distribuído com o app (não no repo público).
+  Evolução possível: API intermediária (Vercel grátis) pra não expor a string.
 
 ## Decisões-chave (e por quê)
 
@@ -71,8 +89,8 @@ loga 1x por empresa.
 
 - **Fase 0 — Descoberta (Amazon):** mapear a tela de *edição* de modelo e confirmar a
   captura estável do `amazon_template_id`. **Maior risco** — precisa de conta logada.
-- **Fase 1 — Cérebro:** schema Supabase (este repo, `supabase/migrations/`), Auth, RLS,
-  realtime, Storage.
+- **Fase 1 — Cérebro:** ✅ schema no Neon (`db/migrations/0001_schema.sql`), auth própria,
+  claim atômico. Projeto `frete-amazon-robo` (id `old-silence-03117274`).
 - **Fase 2 — App:** login do operador, sincronizar do cérebro, importar planilha → banco,
   claim de tarefa.
 - **Fase 3 — Robô criar + editar:** ensinar o Playwright a editar modelo existente.
@@ -80,5 +98,5 @@ loga 1x por empresa.
 
 ## Pendências que dependem do dono
 
-- **Fase 0:** acesso a uma conta Amazon Seller Central logada, com modelos já criados.
-- **Supabase:** criar o projeto (ou liberar acesso ao existente) para aplicar as migrations.
+- **Fase 0:** acesso a uma conta Amazon Seller Central logada, com modelos já criados,
+  com a sessão válida (login não expirado) para mapear a edição.
