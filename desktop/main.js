@@ -77,6 +77,8 @@ function salvarCredencial(nome, email, senha) {
   if (!safeStorage.isEncryptionAvailable()) {
     throw new Error('Cofre indisponível neste sistema (cifragem do SO não disponível).');
   }
+  // A empresa pode vir do banco e ainda não ter pasta local nesta máquina.
+  fs.mkdirSync(pastaEmpresa(nome), { recursive: true });
   const blob = safeStorage.encryptString(JSON.stringify({ email, senha }));
   fs.writeFileSync(caminhoCredencial(nome), blob);
 }
@@ -287,6 +289,7 @@ ipcMain.handle('job:executar', (_e, { nomeEmpresa, salvar, arquivoTabela }) => {
 });
 
 ipcMain.handle('job:login', (_e, { nomeEmpresa }) => {
+  fs.mkdirSync(pastaEmpresa(nomeEmpresa), { recursive: true });   // empresa do banco pode não ter pasta local
   // Decifra as credenciais no main e passa pro worker preencher (se houver cofre).
   const credenciais = lerCredencial(nomeEmpresa);
   return iniciarWorker({ cmd: 'login', nomeEmpresa, urlAmazon: config.amazon.modelos, credenciais });
