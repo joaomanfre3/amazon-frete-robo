@@ -6,6 +6,7 @@
 import { app, BrowserWindow, ipcMain, dialog, shell, utilityProcess, safeStorage } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
+import os from 'node:os';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
@@ -21,7 +22,7 @@ import {
   statusLogin, caminhoCredencial,
 } from '../src/lib/empresa.js';
 import { pingBanco, temBanco } from '../src/db/cliente.js';
-import { autenticar } from '../src/db/operadores.js';
+import { garantirOperadorMaquina } from '../src/db/operadores.js';
 import {
   listarEmpresasDB, criarEmpresaDB, renomearEmpresaDB, removerEmpresaDB,
 } from '../src/db/empresas.js';
@@ -195,16 +196,11 @@ ipcMain.handle('db:status', async () => {
   return pingBanco();
 });
 
-ipcMain.handle('auth:atual', () => operadorAtual);
-
-handleOk('auth:login', async (_e, email, senha) => {
-  const op = await autenticar(email, senha);
-  if (!op) throw new Error('E-mail ou senha inválidos.');
-  operadorAtual = op;
-  return { operador: op };
+// Sem tela de login: identifica o operador automaticamente pelo nome da máquina.
+handleOk('auth:iniciar', async () => {
+  if (!operadorAtual) operadorAtual = await garantirOperadorMaquina(os.hostname());
+  return { operador: operadorAtual };
 });
-
-ipcMain.handle('auth:logout', () => { operadorAtual = null; });
 
 // Lista as empresas do banco (compartilhadas) + status de login LOCAL por slug.
 ipcMain.handle('empresasDb:listar', async () => {

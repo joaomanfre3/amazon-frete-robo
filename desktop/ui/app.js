@@ -72,43 +72,36 @@ function classificarLogin(login, comIdade = false) {
 }
 const ROTULO_STATUS = { pendente: 'pendente', criando: 'em andamento', criado: 'criado', linkado: 'linkado', erro: 'erro' };
 
-// ─── Login do operador ────────────────────────────────────────────────────────
+// ─── Início (sem login: identifica pela máquina) ──────────────────────────────
 async function iniciar() {
+  mostrarView('conectando');
+  $('#db-aviso').hidden = true;
+  $('#btn-reconectar').hidden = true;
+  $('#conectando-msg').textContent = 'Conectando ao sistema…';
+
   const db = await window.api.dbStatus();
-  if (!db.ok) {
-    const aviso = $('#db-aviso');
-    aviso.textContent = `Cérebro indisponível: ${db.erro || 'sem conexão'}.`;
-    aviso.hidden = false;
-  }
-  const op = await window.api.authAtual();
-  if (op) { estado.operador = op; entrarApp(); }
-  else mostrarView('login');
-}
+  if (!db.ok) return mostrarErroConexao(db.erro);
 
-function entrarApp() {
-  $('#op-nome').textContent = estado.operador.nome;
-  $('#op-nome').hidden = false;
-  $('#btn-logout').hidden = false;
-  renderEmpresas();
-}
+  const res = await window.api.authIniciar();
+  if (!res.ok) return mostrarErroConexao(res.erro);
 
-$('#btn-entrar').onclick = async () => {
-  const email = $('#login-email').value.trim();
-  const senha = $('#login-senha').value;
-  if (!email || !senha) { toast('Preencha e-mail e senha', 'err'); return; }
-  const res = await window.api.authLogin(email, senha);
-  if (!res.ok) { toast(res.erro, 'err'); return; }
   estado.operador = res.operador;
   entrarApp();
-};
-$('#login-senha').onkeydown = (e) => { if (e.key === 'Enter') $('#btn-entrar').click(); };
+}
 
-$('#btn-logout').onclick = async () => {
-  await window.api.authLogout();
-  estado.operador = null;
-  $('#op-nome').hidden = true; $('#btn-logout').hidden = true;
-  mostrarView('login');
-};
+function mostrarErroConexao(msg) {
+  $('#conectando-msg').textContent = 'Não foi possível conectar ao sistema.';
+  $('#db-aviso').textContent = msg || 'Sem conexão com o cérebro.';
+  $('#db-aviso').hidden = false;
+  $('#btn-reconectar').hidden = false;
+}
+$('#btn-reconectar').onclick = iniciar;
+
+function entrarApp() {
+  $('#op-nome').textContent = estado.operador.nome;   // nome do computador
+  $('#op-nome').hidden = false;
+  renderEmpresas();
+}
 
 // ─── Empresas (do cérebro) ────────────────────────────────────────────────────
 let _empresasCache = [];

@@ -20,26 +20,19 @@
     </div>
     <div class="topbar-right">
       <span id="op-nome" class="op-nome" hidden></span>
-      <button id="btn-logout" class="btn btn-sm btn-ghost" hidden>Sair</button>
       <span id="badge-status" class="pill pill-idle">Pronto</span>
     </div>
   </header>
 
   <main id="app">
-    <!-- ░░░ TELA 0: LOGIN DO OPERADOR ░░░ -->
-    <section class="view view-login" data-view="login">
+    <!-- ░░░ TELA 0: CONECTANDO ░░░ -->
+    <section class="view view-login" data-view="conectando">
       <div class="login-box">
         <div class="login-logo">🚚</div>
-        <h1>Entrar</h1>
-        <p class="login-sub">Acesse com seu usuário do sistema.</p>
+        <h1>Robô Frete Amazon</h1>
+        <p class="login-sub" id="conectando-msg">Conectando ao sistema…</p>
         <div id="db-aviso" class="db-aviso" hidden></div>
-        <label class="campo-mini"><span>E-mail</span>
-          <input type="email" id="login-email" placeholder="voce@empresa.com" autocomplete="username" />
-        </label>
-        <label class="campo-mini"><span>Senha</span>
-          <input type="password" id="login-senha" placeholder="••••••••" autocomplete="current-password" />
-        </label>
-        <button class="btn btn-primary btn-block" id="btn-entrar">Entrar</button>
+        <button class="btn btn-primary btn-block" id="btn-reconectar" hidden>Tentar de novo</button>
       </div>
     </section>
 

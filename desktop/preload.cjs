@@ -22,9 +22,7 @@ contextBridge.exposeInMainWorld('api', {
 
   // ─── Cérebro central (Neon): auth + empresas + modelos ───
   dbStatus: () => ipcRenderer.invoke('db:status'),
-  authLogin: (email, senha) => ipcRenderer.invoke('auth:login', email, senha),
-  authAtual: () => ipcRenderer.invoke('auth:atual'),
-  authLogout: () => ipcRenderer.invoke('auth:logout'),
+  authIniciar: () => ipcRenderer.invoke('auth:iniciar'),
   listarEmpresasDb: () => ipcRenderer.invoke('empresasDb:listar'),
   criarEmpresaDb: (nome) => ipcRenderer.invoke('empresaDb:criar', nome),
   renomearEmpresaDb: (id, nome) => ipcRenderer.invoke('empresaDb:renomear', id, nome),

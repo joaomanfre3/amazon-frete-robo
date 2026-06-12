@@ -36,3 +36,21 @@ export async function contarOperadores() {
   const r = await queryOne('select count(*)::int as n from operador');
   return r?.n ?? 0;
 }
+
+/**
+ * Operador automático por máquina (sem tela de login). Identifica cada PC pelo
+ * nome do computador — assim o claim e o "quem está mexendo" continuam funcionando.
+ */
+export async function garantirOperadorMaquina(maquina) {
+  const nome = String(maquina || 'PC').trim() || 'PC';
+  const email = `${nome.toLowerCase().replace(/[^a-z0-9-]/g, '-')}@maquina.local`;
+  let op = await queryOne('select id, email, nome from operador where email = $1', [email]);
+  if (!op) {
+    const hash = await bcrypt.hash('local', 4);   // senha não usada (não há login)
+    op = await queryOne(
+      'insert into operador (email, senha_hash, nome) values ($1,$2,$3) returning id, email, nome',
+      [email, hash, nome],
+    );
+  }
+  return op;
+}
