@@ -26,7 +26,7 @@ import {
   listarEmpresasDB, criarEmpresaDB, renomearEmpresaDB, removerEmpresaDB,
 } from '../src/db/empresas.js';
 import {
-  importarProdutos, listarModelosDB, pegarTarefas, tarefasPendentes, reportarResultado,
+  importarProdutos, listarModelosDB, pegarTarefas, tarefasPendentes, reportarResultado, liberarTarefa,
 } from '../src/db/modelos.js';
 import { lerTabela } from '../src/lib/excel.js';
 
@@ -257,19 +257,33 @@ handleOk('jobDb:executar', async (_e, { empresaId, slug, salvar }) => {
   if (!operadorAtual) throw new Error('Faça login primeiro.');
   fs.mkdirSync(pastaEmpresa(slug), { recursive: true });
 
+  // Em modo real, exige login na Amazon — senão os modelos travariam em "criando".
+  if (salvar && !statusLogin(slug).logado) {
+    throw new Error('Você ainda não fez login na Amazon nesta empresa. Faça o login antes de gravar.');
+  }
+
   const tarefas = salvar
     ? await pegarTarefas(empresaId, operadorAtual.id)   // claim atômico
     : await tarefasPendentes(empresaId);                // preview sem claim
   if (!tarefas.length) return { ok: true, vazio: true };
 
+  // Rastreia o que foi claimed pra liberar os que NÃO forem reportados (erro
+  // fatal, cancelamento, navegador fechado) — senão ficam presos em "criando".
+  const naoReportados = new Set(salvar ? tarefas.map((t) => t.modeloId) : []);
+
   const r = iniciarWorker(
     { cmd: 'executar-db', slug, tarefas, salvar },
     (msg) => {
-      if (!salvar) return;  // simulação não grava status
+      if (!salvar) return;  // simulação não faz claim nem grava status
       if (msg.type === 'produto-fim' && msg.modeloId) {
+        naoReportados.delete(msg.modeloId);
         reportarResultado(msg.modeloId, { ok: true, amazonTemplateId: msg.amazonTemplateId }).catch(() => {});
       } else if (msg.type === 'produto-erro' && msg.modeloId) {
+        naoReportados.delete(msg.modeloId);
         reportarResultado(msg.modeloId, { ok: false, erro: msg.msg }).catch(() => {});
+      } else if (msg.type === 'encerrado') {
+        for (const id of naoReportados) liberarTarefa(id).catch(() => {});  // destrava claims órfãos
+        naoReportados.clear();
       }
     },
   );
