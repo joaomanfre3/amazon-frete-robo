@@ -33,6 +33,8 @@ contextBridge.exposeInMainWorld('api', {
   importarPlanilhaDb: (opts) => ipcRenderer.invoke('empresaDb:importar', opts),
   executarDb: (opts) => ipcRenderer.invoke('jobDb:executar', opts),
 
+  abrirConta: (slug) => ipcRenderer.invoke('empresa:abrirConta', slug),
+
   // Jobs locais (execução / login no worker isolado)
   executar: (opts) => ipcRenderer.invoke('job:executar', opts),
   login: (opts) => ipcRenderer.invoke('job:login', opts),

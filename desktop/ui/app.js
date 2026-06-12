@@ -272,6 +272,13 @@ $('#modo-toggle').onclick = (e) => {
   document.querySelectorAll('.modo-opt').forEach((o) => o.classList.toggle('is-on', o === opt));
 };
 
+// ─── Abrir a conta no Chrome (uso manual) ─────────────────────────────────────
+$('#btn-abrir-conta').onclick = async () => {
+  const res = await window.api.abrirConta(estado.empresa.slug);
+  if (!res.ok) { toast(res.erro, 'err'); return; }
+  toast('Abrindo a conta no Chrome…', 'ok');
+};
+
 // ─── Login na Amazon (local) ──────────────────────────────────────────────────
 $('#btn-login').onclick = async () => {
   iniciarTelaJob(`Login — ${estado.empresa.nome}`, null);

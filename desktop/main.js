@@ -6,6 +6,7 @@
 import { app, BrowserWindow, ipcMain, dialog, shell, utilityProcess, safeStorage } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
+import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
 
@@ -16,7 +17,7 @@ dotenv.config(app.isPackaged ? { path: path.join(process.resourcesPath, '.env') 
 import { config } from '../src/config.js';
 import {
   listarEmpresas, criarEmpresa, removerEmpresa, renomearEmpresa,
-  listarTabelas, pastaEmpresa, caminhoInstrucoes, slugify,
+  listarTabelas, pastaEmpresa, caminhoInstrucoes, caminhoProfile, slugify,
   statusLogin, caminhoCredencial,
 } from '../src/lib/empresa.js';
 import { pingBanco, temBanco } from '../src/db/cliente.js';
@@ -163,6 +164,28 @@ ipcMain.handle('credencial:obter', (_e, nome) => {
   const c = lerCredencial(nome);
   if (!c) return { temCredencial: false, email: '' };
   return { temCredencial: true, email: c.email || '' };
+});
+
+// ─── Abrir a conta Amazon no Chrome do sistema (uso manual, não o robô) ─────
+function acharChrome() {
+  const candidatos = [
+    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+    path.join(process.env.LOCALAPPDATA || '', 'Google\\Chrome\\Application\\chrome.exe'),
+  ];
+  return candidatos.find((c) => c && fs.existsSync(c)) || null;
+}
+
+// Abre o navegador da empresa (perfil logado) direto na Seller Central, como
+// janela normal do Chrome — o operador usa à vontade e fecha quando quiser.
+handleOk('empresa:abrirConta', async (_e, slug) => {
+  const chrome = acharChrome();
+  if (!chrome) throw new Error('Google Chrome não encontrado neste computador.');
+  fs.mkdirSync(pastaEmpresa(slug), { recursive: true });
+  const proc = spawn(chrome, [`--user-data-dir=${caminhoProfile(slug)}`, config.amazon.modelos], {
+    detached: true, stdio: 'ignore',
+  });
+  proc.unref();
 });
 
 // ─── IPC: cérebro central (Neon) — auth + empresas + modelos ────────────────
