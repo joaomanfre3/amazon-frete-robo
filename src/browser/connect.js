@@ -10,7 +10,10 @@ export async function abrirNavegador(profileDir, { headless = false } = {}) {
       headless,
       channel: 'chrome',
       viewport: null,
-      args: ['--start-maximized'],
+      // --test-type tira a barra amarela de aviso ("sinalizador não suportado").
+      args: ['--start-maximized', '--test-type'],
+      // Remove a barra "Chrome está sendo controlado por software automatizado".
+      ignoreDefaultArgs: ['--enable-automation'],
     });
   } catch (e) {
     // Perfil já aberto por outra janela do Chrome (ex.: o "Abrir conta").
