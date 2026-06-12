@@ -122,7 +122,9 @@ export async function criarModelo(ctx, { nome, regioes, salvar = false }) {
   const DATA = montarDATA(regioes);
 
   const page = ctx.pages()[0] ?? (await ctx.newPage());
-  await page.goto(config.amazon.criarModelo);
+  // domcontentloaded: não espera a página "terminar" (ela nunca termina —
+  // fica em polling). O waitForSelector abaixo garante que o form apareceu.
+  await page.goto(config.amazon.criarModelo, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('input[name="templateName"]');
   await pausa();
 
@@ -140,9 +142,7 @@ export async function criarModelo(ctx, { nome, regioes, salvar = false }) {
       return true;
     });
     if (!clicou) throw new Error('Botão "Salvar" não encontrado na tela.');
-    await page.waitForLoadState('networkidle', { timeout: 20_000 }).catch(() => {});
-    await pausa(2500);
-    await confirmarSalvamento(page);   // lança se a Amazon não aceitou
+    await confirmarSalvamento(page);   // espera a Amazon confirmar ("/success/")
     amazonTemplateId = extrairTemplateId(page.url());
   }
 
@@ -166,7 +166,7 @@ export async function editarModelo(ctx, { amazonTemplateId, nome, regioes, salva
     encodeURIComponent(JSON.stringify({ action: 'edit', templateId: amazonTemplateId }))}`;
 
   const page = ctx.pages()[0] ?? (await ctx.newPage());
-  await page.goto(urlEdicao);
+  await page.goto(urlEdicao, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('input[name="templateName"]');
   await pausa();
 
@@ -175,8 +175,6 @@ export async function editarModelo(ctx, { amazonTemplateId, nome, regioes, salva
   if (res.erro) throw new Error(res.erro);
 
   if (salvar) {
-    // Click via JS: a Amazon às vezes sobrepõe um banner ("Uso aprovado") que
-    // bloqueia o clique normal do mouse. O .click() do elemento ignora overlays.
     const clicou = await page.evaluate(() => {
       const b = document.querySelector('#submitButton-announce');
       if (!b) return false;
@@ -184,8 +182,6 @@ export async function editarModelo(ctx, { amazonTemplateId, nome, regioes, salva
       return true;
     });
     if (!clicou) throw new Error('Botão "Salvar" não encontrado na tela.');
-    await page.waitForLoadState('networkidle', { timeout: 20_000 }).catch(() => {});
-    await pausa(2500);
     await confirmarSalvamento(page);
   }
 

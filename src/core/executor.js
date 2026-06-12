@@ -205,7 +205,7 @@ export async function abrirParaLogin({ nomeEmpresa, urlAmazon, credenciais = nul
   onEvent({ type: 'login-abrindo', nome: nomeEmpresa });
   const ctx = await abrirNavegador(caminhoProfile(nomeEmpresa));
   const page = ctx.pages()[0] ?? (await ctx.newPage());
-  await page.goto(urlAmazon);
+  await page.goto(urlAmazon, { waitUntil: 'domcontentloaded' });
 
   // Se já abriu logado (sessão ainda válida), confirma de cara.
   let loginConfirmado = estaLogado(page.url());
