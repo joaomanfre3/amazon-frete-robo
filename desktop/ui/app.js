@@ -189,11 +189,12 @@ async function renderModelos() {
   $('#resumo-modelos').innerHTML = modelos.length
     ? `<span class="tag tag-ok">${prontos} prontos</span> <span class="tag ${pend ? 'tag-warn' : ''}">${pend} pendentes</span>${erro ? ` <span class="tag tag-off">${erro} com erro</span>` : ''}`
     : '';
-  estado.pendentes = pend;
-  $('#btn-executar').disabled = pend === 0;
-  $('#exec-hint').textContent = pend > 0
-    ? `${pend} modelo(s) pendente(s) serão processados.`
-    : 'Nada pendente. Importe ou atualize uma planilha.';
+  const aFazer = pend + erro;
+  estado.pendentes = aFazer;
+  $('#btn-executar').disabled = aFazer === 0;
+  $('#exec-hint').textContent = aFazer > 0
+    ? `${aFazer} modelo(s) a processar${erro ? ` (${erro} a refazer)` : ''}.`
+    : 'Tudo pronto. Importe ou atualize uma planilha para mais.';
 }
 
 async function renderStatusLogin(slug) {
@@ -311,6 +312,7 @@ function iniciarTelaJob(titulo, salvar) {
   $('#progress-label').textContent = '—';
   $('#btn-cancelar').hidden = false; $('#btn-cancelar').disabled = false;
   $('#btn-concluir').hidden = true;
+  estado.teveFalha = false;
   $('#badge-status').textContent = 'Trabalhando…';
   $('#badge-status').className = 'pill pill-run';
   mostrarView('execucao');
@@ -376,17 +378,19 @@ function registrarEventos() {
         break;
       }
       case 'produto-erro': {
+        estado.teveFalha = true;
         const li = $(`#prod-${ev.index}`);
         if (li) { li.className = 'prod is-err'; li.querySelector('.prod-icon').textContent = '✘'; }
         logLinha(`  ✘ ${ev.nome}: ${ev.msg}`, 'l-err');
         setProgresso(ev.index + 1, total);
         break;
       }
-      case 'erro-fatal': logLinha(`ERRO: ${ev.msg}`, 'l-err'); toast(ev.msg, 'err'); break;
+      case 'erro-fatal': estado.teveFalha = true; logLinha(`ERRO: ${ev.msg}`, 'l-err'); toast(ev.msg, 'err'); break;
       case 'done': {
         const r = ev.resumo;
-        if (r.cancelado) logLinha('Cancelado pelo usuário.', 'l-warn');
-        else logLinha(`✅ Concluído: ${r.ok} ok, ${r.comFalha} com falha.`, 'l-ok');
+        if (r.cancelado) { estado.teveFalha = true; logLinha('Cancelado pelo usuário.', 'l-warn'); }
+        else if (r.comFalha > 0) { estado.teveFalha = true; logLinha(`Concluído com ${r.comFalha} falha(s): ${r.ok} ok. Os que falharam podem ser refeitos no Executar.`, 'l-warn'); }
+        else logLinha(`✅ Concluído: ${r.ok} ok.`, 'l-ok');
         break;
       }
       case 'encerrado': finalizarJob(); break;
@@ -396,7 +400,11 @@ function registrarEventos() {
 
 function finalizarJob() {
   $('#btn-cancelar').hidden = true;
-  $('#btn-concluir').hidden = false;
+  const fin = $('#btn-concluir');
+  fin.hidden = false;
+  // Cor reflete o desfecho: vermelho se houve erro/cancelamento, normal se OK.
+  fin.className = 'btn ' + (estado.teveFalha ? 'btn-danger' : 'btn-primary');
+  fin.textContent = estado.teveFalha ? 'Finalizar (com erros)' : 'Finalizar';
   $('#badge-status').textContent = 'Pronto';
   $('#badge-status').className = 'pill pill-idle';
   if (estado.desinscrever) { estado.desinscrever(); estado.desinscrever = null; }

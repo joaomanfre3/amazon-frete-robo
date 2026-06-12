@@ -107,10 +107,10 @@ export async function pegarTarefas(empresaId, operadorId) {
   return tarefas;
 }
 
-/** Tarefas pendentes SEM claim (para simulação/preview — não bloqueia ninguém). */
+/** Tarefas a fazer SEM claim (pendentes + erro, para simulação/preview). */
 export async function tarefasPendentes(empresaId) {
   const modelos = await query(
-    "select id, produto_id, amazon_template_id from modelo_frete where empresa_id = $1 and status = 'pendente' order by produto_id",
+    "select id, produto_id, amazon_template_id from modelo_frete where empresa_id = $1 and status in ('pendente','erro') order by produto_id",
     [empresaId],
   );
   const tarefas = [];

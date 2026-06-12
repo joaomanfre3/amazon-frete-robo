@@ -7,7 +7,7 @@ export async function listarEmpresasDB() {
     select e.id, e.nome, e.slug,
            count(distinct p.id)::int as n_produtos,
            count(distinct mf.id) filter (where mf.status in ('criado','linkado'))::int as n_prontos,
-           count(distinct mf.id) filter (where mf.status = 'pendente')::int as n_pendentes,
+           count(distinct mf.id) filter (where mf.status in ('pendente','erro'))::int as n_pendentes,
            count(distinct mf.id)::int as n_modelos
       from empresa e
       left join produto p       on p.empresa_id = e.id

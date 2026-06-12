@@ -91,12 +91,13 @@ create trigger trg_empresa_touch before update on empresa
 create trigger trg_modelo_touch  before update on modelo_frete
   for each row execute function touch_atualizado_em();
 
--- Claim atômico: "pega" os modelos pendentes de uma empresa (quem volta vazio não roda)
+-- Claim atômico: "pega" os modelos a fazer de uma empresa (pendentes E os que
+-- deram erro/timeout — pra retentar). Quem volta vazio não roda.
 create or replace function claim_modelos_pendentes(p_empresa_id uuid, p_operador_id uuid)
 returns setof modelo_frete as $$
   update modelo_frete
      set status='criando', claimed_by=p_operador_id, claimed_at=now(), version=version+1
-   where empresa_id=p_empresa_id and status='pendente'
+   where empresa_id=p_empresa_id and status in ('pendente','erro')
   returning *;
 $$ language sql;
 
