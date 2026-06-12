@@ -10,6 +10,9 @@ export async function abrirNavegador(profileDir, { headless = false } = {}) {
     viewport: null,
     args: ['--start-maximized'],
   });
+  // Paciência com a Amazon (lenta): vale pra esperar campos, cliques e navegação.
+  ctx.setDefaultTimeout(config.navTimeout);
+  ctx.setDefaultNavigationTimeout(config.navTimeout);
   return ctx;
 }
 

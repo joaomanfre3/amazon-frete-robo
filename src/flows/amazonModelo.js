@@ -106,7 +106,7 @@ export async function criarModelo(ctx, { nome, regioes, salvar = false }) {
 
   const page = ctx.pages()[0] ?? (await ctx.newPage());
   await page.goto(config.amazon.criarModelo);
-  await page.waitForSelector('input[name="templateName"]', { timeout: 30_000 });
+  await page.waitForSelector('input[name="templateName"]');
   await pausa();
 
   const res = await page.evaluate(preencherNaPagina, { nome, DATA });
@@ -115,7 +115,7 @@ export async function criarModelo(ctx, { nome, regioes, salvar = false }) {
   let amazonTemplateId = null;
   if (salvar) {
     await page.click('#submitButton-announce');
-    await page.waitForLoadState('networkidle').catch(() => {});
+    await page.waitForLoadState('networkidle', { timeout: 20_000 }).catch(() => {});
     await pausa(1500);
     amazonTemplateId = extrairTemplateId(page.url());
   }
@@ -141,7 +141,7 @@ export async function editarModelo(ctx, { amazonTemplateId, nome, regioes, salva
 
   const page = ctx.pages()[0] ?? (await ctx.newPage());
   await page.goto(urlEdicao);
-  await page.waitForSelector('input[name="templateName"]', { timeout: 30_000 });
+  await page.waitForSelector('input[name="templateName"]');
   await pausa();
 
   // Mesma função de preenchimento — a grade de regiões é igual na edição.
@@ -150,7 +150,7 @@ export async function editarModelo(ctx, { amazonTemplateId, nome, regioes, salva
 
   if (salvar) {
     await page.click('#submitButton-announce');
-    await page.waitForLoadState('networkidle').catch(() => {});
+    await page.waitForLoadState('networkidle', { timeout: 20_000 }).catch(() => {});
     await pausa(1500);
   }
 
