@@ -88,26 +88,29 @@ function montarDATA(regioes) {
   return DATA;
 }
 
-// Tenta extrair o ID do template da URL após salvar (vários formatos possíveis).
+// Extrai o ID do template da URL após salvar. Formato confirmado (Fase 0):
+//   sellercentral.amazon.com.br/sbr#<uuid>/success/1
 function extrairTemplateId(url) {
-  const m = url.match(/templateId["%:=/]+([A-Za-z0-9_-]{6,})/i)
-        || url.match(/[?&]id=([A-Za-z0-9_-]{6,})/i);
+  const m = url.match(/#([a-f0-9-]{30,})(?:\/|$)/i)            // uuid após o #
+        || url.match(/templateId["%:=/]+([A-Za-z0-9_-]{6,})/i);
   return m ? m[1] : null;
 }
 
-// Confirma que o salvamento foi aceito. Se o formulário ainda está na tela, a
-// Amazon NÃO salvou (validação/erro) — lança com o motivo, em vez de fingir sucesso.
+// Confirma que o salvamento foi aceito. Sucesso confirmado pela Amazon = a URL
+// passa a conter "/success/". Se não confirmar (a Amazon é lenta — espera até
+// 60s), lança o motivo, em vez de fingir sucesso.
 async function confirmarSalvamento(page) {
-  // Sucesso = a página sai do formulário (a Amazon navega pra lista). Espera até 15s.
-  const saiu = await page
-    .waitForFunction(() => !document.querySelector('input[name="templateName"]'), { timeout: 15_000 })
+  const ok = await page
+    .waitForFunction(
+      () => location.href.includes('/success/') || !document.querySelector('input[name="templateName"]'),
+      { timeout: 60_000 },
+    )
     .then(() => true).catch(() => false);
-  if (saiu) return;
-  // Ainda no formulário → NÃO salvou. Pega o motivo do erro pra reportar.
+  if (ok) return;
   const erros = await page.evaluate(() =>
     [...document.querySelectorAll('.a-alert-content, .a-alert-container, [class*="error" i]')]
       .map((e) => (e.innerText || '').trim()).filter((t) => t && t.length < 200).slice(0, 3));
-  throw new Error(erros[0] || 'A Amazon não confirmou o salvamento (campos obrigatórios / regiões sem preço).');
+  throw new Error(erros[0] || 'A Amazon não confirmou o salvamento (verifique a tela).');
 }
 
 /**
@@ -128,7 +131,15 @@ export async function criarModelo(ctx, { nome, regioes, salvar = false }) {
 
   let amazonTemplateId = null;
   if (salvar) {
-    await page.click('#submitButton-announce');
+    // Click via JS: a Amazon às vezes sobrepõe um banner ("Uso aprovado") que
+    // bloqueia o clique normal do mouse. O .click() do elemento ignora overlays.
+    const clicou = await page.evaluate(() => {
+      const b = document.querySelector('#submitButton-announce');
+      if (!b) return false;
+      b.click();
+      return true;
+    });
+    if (!clicou) throw new Error('Botão "Salvar" não encontrado na tela.');
     await page.waitForLoadState('networkidle', { timeout: 20_000 }).catch(() => {});
     await pausa(2500);
     await confirmarSalvamento(page);   // lança se a Amazon não aceitou
@@ -164,7 +175,15 @@ export async function editarModelo(ctx, { amazonTemplateId, nome, regioes, salva
   if (res.erro) throw new Error(res.erro);
 
   if (salvar) {
-    await page.click('#submitButton-announce');
+    // Click via JS: a Amazon às vezes sobrepõe um banner ("Uso aprovado") que
+    // bloqueia o clique normal do mouse. O .click() do elemento ignora overlays.
+    const clicou = await page.evaluate(() => {
+      const b = document.querySelector('#submitButton-announce');
+      if (!b) return false;
+      b.click();
+      return true;
+    });
+    if (!clicou) throw new Error('Botão "Salvar" não encontrado na tela.');
     await page.waitForLoadState('networkidle', { timeout: 20_000 }).catch(() => {});
     await pausa(2500);
     await confirmarSalvamento(page);
