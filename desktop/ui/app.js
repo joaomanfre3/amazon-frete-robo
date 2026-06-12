@@ -12,7 +12,10 @@ const estado = {
 
 function mostrarView(nome) {
   document.querySelectorAll('.view').forEach((v) => { v.hidden = v.dataset.view !== nome; });
+  $('#topbar-busca').hidden = nome !== 'empresas';   // busca só na lista de empresas
 }
+
+const normalizar = (s) => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 
 // ─── Toast ──────────────────────────────────────────────────────────────────
 let toastTimer = null;
@@ -108,11 +111,20 @@ $('#btn-logout').onclick = async () => {
 };
 
 // ─── Empresas (do cérebro) ────────────────────────────────────────────────────
+let _empresasCache = [];
+
 async function renderEmpresas() {
-  const empresas = await window.api.listarEmpresasDb();
+  _empresasCache = await window.api.listarEmpresasDb();
+  $('#busca-empresa').value = '';
+  desenharGrid(_empresasCache);
+  $('#empresas-vazio').hidden = _empresasCache.length > 0;
+  mostrarView('empresas');
+}
+
+function desenharGrid(lista) {
   const grid = $('#grid-empresas');
   grid.innerHTML = '';
-  for (const emp of empresas) {
+  for (const emp of lista) {
     const tot = emp.n_modelos;
     const modeloTag = tot === 0
       ? `<span class="tag tag-off">sem modelos</span>`
@@ -130,9 +142,12 @@ async function renderEmpresas() {
   novo.textContent = '＋ Nova empresa';
   novo.onclick = novaEmpresa;
   grid.appendChild(novo);
-  $('#empresas-vazio').hidden = empresas.length > 0;
-  mostrarView('empresas');
 }
+
+$('#busca-empresa').oninput = (e) => {
+  const t = normalizar(e.target.value);
+  desenharGrid(t ? _empresasCache.filter((emp) => normalizar(emp.nome).includes(t)) : _empresasCache);
+};
 
 async function novaEmpresa() {
   const nome = await modal({
