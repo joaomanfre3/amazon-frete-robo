@@ -89,11 +89,25 @@ function montarDATA(regioes) {
 }
 
 // Tenta extrair o ID do template da URL após salvar (vários formatos possíveis).
-// ⚠️ PENDENTE FASE 0: confirmar o formato real com uma conta logada.
 function extrairTemplateId(url) {
   const m = url.match(/templateId["%:=/]+([A-Za-z0-9_-]{6,})/i)
         || url.match(/[?&]id=([A-Za-z0-9_-]{6,})/i);
   return m ? m[1] : null;
+}
+
+// Confirma que o salvamento foi aceito. Se o formulário ainda está na tela, a
+// Amazon NÃO salvou (validação/erro) — lança com o motivo, em vez de fingir sucesso.
+async function confirmarSalvamento(page) {
+  // Sucesso = a página sai do formulário (a Amazon navega pra lista). Espera até 15s.
+  const saiu = await page
+    .waitForFunction(() => !document.querySelector('input[name="templateName"]'), { timeout: 15_000 })
+    .then(() => true).catch(() => false);
+  if (saiu) return;
+  // Ainda no formulário → NÃO salvou. Pega o motivo do erro pra reportar.
+  const erros = await page.evaluate(() =>
+    [...document.querySelectorAll('.a-alert-content, .a-alert-container, [class*="error" i]')]
+      .map((e) => (e.innerText || '').trim()).filter((t) => t && t.length < 200).slice(0, 3));
+  throw new Error(erros[0] || 'A Amazon não confirmou o salvamento (campos obrigatórios / regiões sem preço).');
 }
 
 /**
@@ -116,7 +130,8 @@ export async function criarModelo(ctx, { nome, regioes, salvar = false }) {
   if (salvar) {
     await page.click('#submitButton-announce');
     await page.waitForLoadState('networkidle', { timeout: 20_000 }).catch(() => {});
-    await pausa(1500);
+    await pausa(2500);
+    await confirmarSalvamento(page);   // lança se a Amazon não aceitou
     amazonTemplateId = extrairTemplateId(page.url());
   }
 
@@ -151,7 +166,8 @@ export async function editarModelo(ctx, { amazonTemplateId, nome, regioes, salva
   if (salvar) {
     await page.click('#submitButton-announce');
     await page.waitForLoadState('networkidle', { timeout: 20_000 }).catch(() => {});
-    await pausa(1500);
+    await pausa(2500);
+    await confirmarSalvamento(page);
   }
 
   return { ...res, amazonTemplateId };
